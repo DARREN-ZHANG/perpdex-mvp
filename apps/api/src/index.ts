@@ -12,6 +12,7 @@ import {
   startLiquidationScheduler,
   startReconciliationScheduler
 } from "./jobs";
+import { startIndexer } from "./indexer";
 
 async function main() {
   // 初始化队列
@@ -23,6 +24,12 @@ async function main() {
   // 启动定时任务
   const liquidationScheduler = startLiquidationScheduler();
   const reconciliationScheduler = startReconciliationScheduler();
+
+  // 启动 Indexer（非测试环境）
+  let vaultIndexer: ReturnType<typeof startIndexer> | undefined;
+  if (config.server.nodeEnv !== "test") {
+    vaultIndexer = startIndexer();
+  }
 
   const app = await buildServer();
 
@@ -46,6 +53,11 @@ async function main() {
     // 停止定时任务
     liquidationScheduler.stop();
     reconciliationScheduler.stop();
+
+    // 停止 Indexer
+    if (vaultIndexer) {
+      vaultIndexer.stop();
+    }
 
     // 停止 Worker
     await stopHedgeWorker();

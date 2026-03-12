@@ -225,3 +225,12 @@ model HedgeOrder {
   @@index([userId, updatedAt])
   @@map("hedge_orders")
 }
+
+model BlockCursor {
+  id        String   @id @default(cuid())
+  chainId   Int      @unique @map("chain_id")
+  cursor    BigInt   @db.BigInt
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("block_cursors")
+}
