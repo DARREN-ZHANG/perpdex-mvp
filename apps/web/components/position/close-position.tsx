@@ -4,7 +4,7 @@
 import { useState } from 'react'
 import { X, Loader2, AlertTriangle } from 'lucide-react'
 import type { Position } from '@perpdex/shared'
-import { formatPrice, formatAmount, formatPnL } from '@/hooks/use-positions'
+import { formatPrice, formatAmount } from '@/hooks/use-positions'
 import { PnLDisplay } from './pnl-display'
 
 interface ClosePositionButtonProps {

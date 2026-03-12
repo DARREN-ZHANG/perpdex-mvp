@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import type { Order, Position } from '@/types/trading'
+import type { Order, Position } from '@perpdex/shared'
 
 interface TradeResultProps {
   order: Order | null
