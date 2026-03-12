@@ -6,22 +6,23 @@ import { useOrderEstimate } from '@/hooks/use-order-estimate'
 import { useOrders } from '@/hooks/use-orders'
 import { LeverageSlider } from './leverage-slider'
 import { Loader2 } from 'lucide-react'
+import type { OrderSide } from '@/types/trading'
 
 export function OrderForm() {
-  const [side, setSide] = useState<'long' | 'short'>('long')
+  const [side, setSide] = useState<OrderSide>('LONG')
   const [margin, setMargin] = useState('')
   const [leverage, setLeverage] = useState(10)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const { balance } = useBalance()
-  const { createOrder } = useOrders()
+  const { submitOrder } = useOrders()
   const estimate = useOrderEstimate({
     margin: Number(margin) || 0,
     leverage,
-    side,
+    side: side === 'LONG' ? 'long' : 'short',
   })
 
-  const availableBalance = balance?.available || 0
+  const availableBalance = balance ? parseFloat(balance.availableBalance) : 0
 
   const handleSubmit = async () => {
     if (!margin || Number(margin) <= 0) return
@@ -29,11 +30,10 @@ export function OrderForm() {
 
     setIsSubmitting(true)
     try {
-      await createOrder({
-        symbol: 'BTC',
+      await submitOrder({
         side,
-        type: 'market',
-        margin: Number(margin),
+        size: (Number(margin) * leverage / estimate.entryPrice).toFixed(4),
+        margin,
         leverage,
       })
       setMargin('')
@@ -47,9 +47,9 @@ export function OrderForm() {
       {/* Long/Short toggle */}
       <div className="grid grid-cols-2 gap-2 mb-5">
         <button
-          onClick={() => setSide('long')}
+          onClick={() => setSide('LONG')}
           className={`py-2.5 rounded-md text-sm font-semibold transition-colors ${
-            side === 'long'
+            side === 'LONG'
               ? 'bg-pro-accent-green text-white'
               : 'bg-pro-accent-green/10 text-pro-accent-green border border-pro-accent-green/20'
           }`}
@@ -57,9 +57,9 @@ export function OrderForm() {
           开多
         </button>
         <button
-          onClick={() => setSide('short')}
+          onClick={() => setSide('SHORT')}
           className={`py-2.5 rounded-md text-sm font-semibold transition-colors ${
-            side === 'short'
+            side === 'SHORT'
               ? 'bg-pro-accent-red text-white'
               : 'bg-pro-accent-red/10 text-pro-accent-red border border-pro-accent-red/20'
           }`}
@@ -104,7 +104,7 @@ export function OrderForm() {
         onClick={handleSubmit}
         disabled={!margin || Number(margin) <= 0 || Number(margin) > availableBalance || isSubmitting}
         className={`w-full py-3.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-          side === 'long'
+          side === 'LONG'
             ? 'bg-pro-accent-green text-white hover:bg-pro-accent-green/90'
             : 'bg-pro-accent-red text-white hover:bg-pro-accent-red/90'
         }`}
@@ -112,7 +112,7 @@ export function OrderForm() {
         {isSubmitting ? (
           <Loader2 className="w-5 h-5 animate-spin mx-auto" />
         ) : (
-          `开${side === 'long' ? '多' : '空'} BTC`
+          `开${side === 'LONG' ? '多' : '空'} BTC`
         )}
       </button>
 

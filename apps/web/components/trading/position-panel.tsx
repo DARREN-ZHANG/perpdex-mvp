@@ -38,8 +38,12 @@ export function PositionPanel() {
       </div>
 
       {positions.map((position) => {
-        const pnl = position.unrealizedPnl || 0
+        const pnl = parseFloat(position.unrealizedPnl || '0')
         const isProfitable = pnl >= 0
+        const positionSize = parseFloat(position.positionSize || '0')
+        const entryPrice = parseFloat(position.entryPrice || '0')
+        const liquidationPrice = parseFloat(position.liquidationPrice || '0')
+        const markPrice = marketData?.markPrice ? parseFloat(marketData.markPrice) : 0
 
         return (
           <div key={position.id} className="p-5 border-b border-pro-gray-100 last:border-b-0">
@@ -47,12 +51,12 @@ export function PositionPanel() {
               <span className="font-semibold text-pro-gray-800">{position.symbol}/USD</span>
               <span
                 className={`text-xs px-2 py-0.5 rounded font-medium ${
-                  position.side === 'long'
+                  position.side === 'LONG'
                     ? 'bg-pro-accent-green/10 text-pro-accent-green'
                     : 'bg-pro-accent-red/10 text-pro-accent-red'
                 }`}
               >
-                {position.side === 'long' ? '做多' : '做空'}
+                {position.side === 'LONG' ? '做多' : '做空'}
               </span>
             </div>
 
@@ -60,7 +64,7 @@ export function PositionPanel() {
               <div>
                 <div className="text-xs text-pro-gray-500 mb-0.5">仓位大小</div>
                 <div className="text-sm font-semibold font-mono">
-                  {position.positionSize.toLocaleString()} USD
+                  {positionSize.toLocaleString()} USD
                 </div>
               </div>
               <div>
@@ -76,22 +80,22 @@ export function PositionPanel() {
               </div>
               <div>
                 <div className="text-xs text-pro-gray-500 mb-0.5">开仓价格</div>
-                <div className="text-sm font-mono">{position.entryPrice.toLocaleString()}</div>
+                <div className="text-sm font-mono">{entryPrice.toLocaleString()}</div>
               </div>
               <div>
                 <div className="text-xs text-pro-gray-500 mb-0.5">标记价格</div>
                 <div className="text-sm font-mono">
-                  {marketData?.markPrice.toLocaleString() || '—'}
+                  {markPrice ? markPrice.toLocaleString() : '—'}
                 </div>
               </div>
               <div>
-                <div className="text-xs text-pro-gray-500 mb-0.5">杠杆</div>
-                <div className="text-sm font-mono">{position.leverage}x</div>
+                <div className="text-xs text-pro-gray-500 mb-0.5">保证金</div>
+                <div className="text-sm font-mono">{parseFloat(position.margin).toLocaleString()} USDC</div>
               </div>
               <div>
                 <div className="text-xs text-pro-gray-500 mb-0.5">清算价格</div>
                 <div className="text-sm font-mono text-pro-accent-red">
-                  {position.liquidationPrice?.toLocaleString() || '—'}
+                  {liquidationPrice ? liquidationPrice.toLocaleString() : '—'}
                 </div>
               </div>
             </div>

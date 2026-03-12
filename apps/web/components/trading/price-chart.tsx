@@ -60,8 +60,9 @@ export function PriceChart() {
     }
   }, [timeframe])
 
-  const change24h = marketData?.change24h || 0
+  const change24h = marketData?.change24h ? parseFloat(marketData.change24h) : 0
   const isPositive = change24h >= 0
+  const markPrice = marketData?.markPrice ? parseFloat(marketData.markPrice) : 0
 
   return (
     <div className="flex flex-col h-full">
@@ -87,11 +88,11 @@ export function PriceChart() {
 
       {/* Chart Area */}
       <div className="flex-1 relative">
-        {marketData && (
+        {marketData && markPrice > 0 && (
           <div className="absolute top-4 left-4 z-10 bg-white/95 rounded-lg shadow-float p-3">
             <div className="text-sm text-pro-gray-500 mb-1">BTC / USD</div>
             <div className="text-2xl font-bold font-mono text-pro-gray-800">
-              {marketData.markPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              {markPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
             <div
               className={`text-sm font-medium mt-1 ${
@@ -99,7 +100,7 @@ export function PriceChart() {
               }`}
             >
               {isPositive ? '+' : ''}
-              {marketData.change24h.toFixed(2)}%
+              {change24h.toFixed(2)}%
             </div>
           </div>
         )}

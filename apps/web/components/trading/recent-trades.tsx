@@ -12,12 +12,13 @@ export function RecentTrades() {
 
   const getTypeClass = (type: string) => {
     switch (type) {
-      case 'trade':
-        return 'text-pro-accent-cyan'
-      case 'deposit':
+      case 'DEPOSIT':
         return 'text-pro-accent-green'
-      case 'withdraw':
+      case 'WITHDRAW':
         return 'text-pro-accent-red'
+      case 'MARGIN_LOCK':
+      case 'MARGIN_RELEASE':
+        return 'text-pro-accent-cyan'
       default:
         return 'text-pro-gray-500'
     }
@@ -25,12 +26,20 @@ export function RecentTrades() {
 
   const getTypeLabel = (type: string) => {
     switch (type) {
-      case 'trade':
-        return '交易'
-      case 'deposit':
+      case 'DEPOSIT':
         return '充值'
-      case 'withdraw':
+      case 'WITHDRAW':
         return '提现'
+      case 'MARGIN_LOCK':
+        return '保证金锁定'
+      case 'MARGIN_RELEASE':
+        return '保证金释放'
+      case 'REALIZED_PNL':
+        return '已实现盈亏'
+      case 'FEE':
+        return '手续费'
+      case 'LIQUIDATION':
+        return '清算'
       default:
         return type
     }
@@ -38,12 +47,12 @@ export function RecentTrades() {
 
   const getStatusClass = (status: string) => {
     switch (status) {
-      case 'filled':
-      case 'completed':
+      case 'CONFIRMED':
         return 'bg-pro-accent-green/10 text-pro-accent-green'
-      case 'pending':
+      case 'PENDING':
         return 'bg-pro-accent-cyan/10 text-pro-accent-cyan'
-      case 'failed':
+      case 'FAILED':
+      case 'REVERTED':
         return 'bg-pro-accent-red/10 text-pro-accent-red'
       default:
         return 'bg-pro-gray-100 text-pro-gray-500'
@@ -70,11 +79,10 @@ export function RecentTrades() {
       </div>
 
       {/* Header */}
-      <div className="grid grid-cols-[100px_80px_1fr_1fr_80px] gap-2 px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
+      <div className="grid grid-cols-[100px_1fr_1fr_80px] gap-2 px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
         <span>时间</span>
         <span>类型</span>
         <span>数量</span>
-        <span>交易对</span>
         <span>状态</span>
       </div>
 
@@ -92,7 +100,7 @@ export function RecentTrades() {
           transactions.map((tx) => (
             <div
               key={tx.id}
-              className="grid grid-cols-[100px_80px_1fr_1fr_80px] gap-2 px-4 py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
+              className="grid grid-cols-[100px_1fr_1fr_80px] gap-2 px-4 py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
             >
               <span className="text-pro-gray-500 font-mono text-xs">
                 {new Date(tx.createdAt).toLocaleTimeString('zh-CN', {
@@ -105,13 +113,10 @@ export function RecentTrades() {
                 {getTypeLabel(tx.type)}
               </span>
               <span className="font-mono font-medium">
-                {tx.amount} {tx.symbol}
-              </span>
-              <span className="text-pro-gray-500">
-                {tx.pair || '—'}
+                {parseFloat(tx.amount).toLocaleString()} USDC
               </span>
               <span className={`text-xs px-2 py-0.5 rounded-full w-fit ${getStatusClass(tx.status)}`}>
-                {tx.status === 'filled' ? '已成交' : tx.status === 'completed' ? '已完成' : tx.status === 'pending' ? '处理中' : '失败'}
+                {tx.status === 'CONFIRMED' ? '已确认' : tx.status === 'PENDING' ? '处理中' : '失败'}
               </span>
             </div>
           ))

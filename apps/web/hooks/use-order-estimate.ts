@@ -32,7 +32,7 @@ export function useOrderEstimate({
     }
 
     const positionSize = margin * leverage
-    const entryPrice = marketData.markPrice
+    const entryPrice = parseFloat(marketData.markPrice)
 
     // Simplified liquidation price: entryPrice * (1 ± 1/leverage * 0.9)
     const liquidationPrice =

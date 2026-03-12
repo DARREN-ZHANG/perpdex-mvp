@@ -113,7 +113,7 @@ export function usePositions() {
 
     // 确保 Socket 已连接
     const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : undefined
-    const socket = socketClient.connect(token)
+    const socket = socketClient.connect(token ?? undefined)
 
     // 订阅仓位更新
     const unsubscribe = socketClient.subscribePositions(
