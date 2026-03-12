@@ -1,6 +1,4 @@
 // apps/web/components/position/pnl-display.tsx
-'use client'
-
 import { formatPnL } from '@/hooks/use-positions'
 
 interface PnLDisplayProps {
@@ -17,13 +15,11 @@ const sizeMap = {
 
 export function PnLDisplay({ pnl, showSign = true, size = 'md' }: PnLDisplayProps) {
   const { value, isPositive, isNegative } = formatPnL(pnl)
-
   const colorClass = isPositive
     ? 'text-green-600'
     : isNegative
-    ? 'text-red-600'
-    : 'text-gray-600'
-
+      ? 'text-red-600'
+      : 'text-gray-600'
   const sign = showSign ? (isPositive ? '+' : isNegative ? '-' : '') : ''
 
   return (
@@ -33,36 +29,38 @@ export function PnLDisplay({ pnl, showSign = true, size = 'md' }: PnLDisplayProp
   )
 }
 
-// PnL百分比显示
 interface PnLPercentDisplayProps {
   pnl: string
   margin: string
+  showSign?: boolean
   size?: 'sm' | 'md' | 'lg'
 }
 
-export function PnLPercentDisplay({ pnl, margin, size = 'sm' }: PnLPercentDisplayProps) {
+export function PnLPercentDisplay({
+  pnl,
+  margin,
+  showSign = true,
+  size = 'sm',
+}: PnLPercentDisplayProps) {
   const pnlNum = parseFloat(pnl)
   const marginNum = parseFloat(margin)
 
-  if (marginNum === 0) {
-    return <span className="text-gray-400 text-xs">-</span>
-  }
+  if (marginNum === 0) return null
 
   const percent = (pnlNum / marginNum) * 100
   const isPositive = percent > 0
   const isNegative = percent < 0
-
   const colorClass = isPositive
     ? 'text-green-600'
     : isNegative
-    ? 'text-red-600'
-    : 'text-gray-600'
-
-  const sign = isPositive ? '+' : isNegative ? '-' : ''
+      ? 'text-red-600'
+      : 'text-gray-600'
+  const sign = showSign ? (isPositive ? '+' : isNegative ? '-' : '') : ''
 
   return (
     <span className={`font-mono ${colorClass} ${sizeMap[size]}`}>
-      {sign}{Math.abs(percent).toFixed(2)}%
+      {sign}
+      {Math.abs(percent).toFixed(2)}%
     </span>
   )
 }

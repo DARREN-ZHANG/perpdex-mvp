@@ -200,6 +200,19 @@ class ApiClient {
     return this.request<T>(endpoint, { ...config, method: 'DELETE' })
   }
 
+  // PATCH 请求
+  async patch<T>(
+    endpoint: string,
+    body?: unknown,
+    config?: RequestConfig
+  ): Promise<ApiResponse<T>> {
+    return this.request<T>(endpoint, {
+      ...config,
+      method: 'PATCH',
+      body: body ? JSON.stringify(body) : undefined,
+    })
+  }
+
   // ========== 认证相关 API ==========
 
   // 获取 SIWE 挑战

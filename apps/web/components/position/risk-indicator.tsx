@@ -1,8 +1,6 @@
 // apps/web/components/position/risk-indicator.tsx
-'use client'
-
-import type { Position } from '@perpdex/shared'
 import { getRiskLevelColor, getRiskLevelText } from '@/hooks/use-positions'
+import type { Position } from '@perpdex/shared'
 
 interface RiskIndicatorProps {
   riskLevel: Position['riskLevel']
@@ -22,18 +20,9 @@ export function RiskIndicator({ riskLevel, showLabel = false, size = 'md' }: Ris
 
   return (
     <div className="flex items-center gap-2">
-      <span
-        className={`inline-block rounded-full ${sizeMap[size]} ${colorClass}`}
-        title={text}
-      />
+      <div className={`${sizeMap[size]} rounded-full ${colorClass}`} title={text} />
       {showLabel && (
-        <span className={`text-sm font-medium ${
-          riskLevel === 'SAFE' ? 'text-green-600' :
-          riskLevel === 'WARNING' ? 'text-yellow-600' :
-          'text-red-600'
-        }`}>
-          {text}
-        </span>
+        <span className="text-sm text-gray-600">{text}</span>
       )}
     </div>
   )

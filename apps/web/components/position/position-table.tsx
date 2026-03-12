@@ -272,7 +272,7 @@ export function PositionTable() {
                           <ClosePositionButton
                             position={position}
                             onClose={closePosition}
-                            isClosing={isClosing}
+                            isClosing={isClosing(position.id)}
                           />
                         </div>
                       </td>

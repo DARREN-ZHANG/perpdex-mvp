@@ -3,8 +3,6 @@
 
 import { useState, useEffect } from 'react'
 import { useDeposit } from '@/hooks/use-deposit'
-import { parseUSDC, formatUSDC, USDC_DECIMALS } from '@/lib/contracts'
-import { useAccount } from 'wagmi'
 
 interface DepositFlowProps {
   isOpen: boolean
@@ -12,7 +10,6 @@ interface DepositFlowProps {
 }
 
 export function DepositFlow({ isOpen, onClose }: DepositFlowProps) {
-  const { address } = useAccount()
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
 
