@@ -7,6 +7,10 @@ import type {
   AuthTokens,
   User,
   RequestConfig,
+  AccountBalance,
+  Transaction,
+  WithdrawPayload,
+  PaginatedResponse,
 } from '@/types/api'
 
 class ApiClient {
@@ -225,10 +229,37 @@ class ApiClient {
     this.clearTokens()
     return result
   }
+
+  // ========== 资产相关 API ==========
+
+  // 获取用户余额
+  async getBalance(): Promise<ApiResponse<AccountBalance>> {
+    return this.get<AccountBalance>('/api/user/balance')
+  }
+
+  // 获取交易历史
+  async getTransactions(
+    query?: { cursor?: string; limit?: number; type?: Transaction['type'] }
+  ): Promise<ApiResponse<PaginatedResponse<Transaction>>> {
+    const params = new URLSearchParams()
+    if (query?.cursor) params.append('cursor', query.cursor)
+    if (query?.limit) params.append('limit', query.limit.toString())
+    if (query?.type) params.append('type', query.type)
+
+    const queryString = params.toString()
+    return this.get<PaginatedResponse<Transaction>>(
+      `/api/user/history${queryString ? `?${queryString}` : ''}`
+    )
+  }
+
+  // 发起提现
+  async withdraw(amount: string): Promise<ApiResponse<WithdrawPayload>> {
+    return this.post<WithdrawPayload>('/api/user/withdraw', { amount })
+  }
 }
 
 // 导出单例实例
 export const api = new ApiClient()
 
 // 导出类型
-export type { ApiResponse, ApiError, AuthChallenge, AuthTokens, User }
+export type { ApiResponse, ApiError, AuthChallenge, AuthTokens, User, AccountBalance, Transaction, WithdrawPayload, PaginatedResponse }
