@@ -1,0 +1,25 @@
+{
+  "name": "@perpdex/web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "lint": "eslint \"app/**/*.{ts,tsx}\" \"next.config.ts\"",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "format": "eslint --fix \"app/**/*.{ts,tsx}\" \"next.config.ts\""
+  },
+  "dependencies": {
+    "@perpdex/shared": "workspace:*",
+    "next": "^15.3.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "vitest": "^3.1.1"
+  }
+}

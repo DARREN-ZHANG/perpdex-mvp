@@ -1,2 +1,13 @@
 .claude
 .DS_Store
+node_modules
+.pnpm-store
+.turbo
+dist
+coverage
+.next
+out
+.env
+.env.local
+.env.*.local
+*.tsbuildinfo
