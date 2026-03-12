@@ -1,269 +1,150 @@
 'use client'
 
-import { useState, useCallback, useMemo } from 'react'
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import type { OrderSide, OrderFormData } from '@/types/trading'
-import { TRADING_CONFIG } from '@/config/constants'
+import { useState } from 'react'
+import { useBalance } from '@/hooks/use-balance'
+import { useOrderEstimate } from '@/hooks/use-order-estimate'
+import { useOrders } from '@/hooks/use-orders'
+import { LeverageSlider } from './leverage-slider'
+import { Loader2 } from 'lucide-react'
 
-interface OrderFormProps {
-  currentPrice: number
-  availableBalance: string
-  onSubmit: (data: OrderFormData) => Promise<void>
-  isSubmitting: boolean
-}
+export function OrderForm() {
+  const [side, setSide] = useState<'long' | 'short'>('long')
+  const [margin, setMargin] = useState('')
+  const [leverage, setLeverage] = useState(10)
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-const orderFormSchema = z.object({
-  side: z.enum(['LONG', 'SHORT']),
-  size: z.string().min(1, '请输入数量'),
-  margin: z.string().min(1, '请输入保证金'),
-  leverage: z.number().min(1).max(20),
-})
-
-type OrderFormValues = z.infer<typeof orderFormSchema>
-
-export function OrderForm({
-  currentPrice,
-  availableBalance,
-  onSubmit,
-  isSubmitting,
-}: OrderFormProps) {
-  const [selectedSide, setSelectedSide] = useState<OrderSide>('LONG')
-  const balanceNum = parseFloat(availableBalance) || 0
-
-  const {
-    register,
-    handleSubmit,
-    watch,
-    setValue,
-    formState: { errors },
-  } = useForm<OrderFormValues>({
-    resolver: zodResolver(orderFormSchema),
-    defaultValues: {
-      side: 'LONG',
-      size: '',
-      margin: '',
-      leverage: TRADING_CONFIG.DEFAULT_LEVERAGE,
-    },
+  const { balance } = useBalance()
+  const { createOrder } = useOrders()
+  const estimate = useOrderEstimate({
+    margin: Number(margin) || 0,
+    leverage,
+    side,
   })
 
-  const watchSize = watch('size')
-  const watchMargin = watch('margin')
-  const watchLeverage = watch('leverage')
+  const availableBalance = balance?.available || 0
 
-  const estimate = useMemo(() => {
-    const size = parseFloat(watchSize) || 0
-    const leverage = watchLeverage || 1
+  const handleSubmit = async () => {
+    if (!margin || Number(margin) <= 0) return
+    if (Number(margin) > availableBalance) return
 
-    if (size > 0 && currentPrice > 0) {
-      const notional = size * currentPrice
-      const requiredMargin = notional / leverage
-      return {
-        notional: notional.toFixed(2),
-        requiredMargin: requiredMargin.toFixed(2),
-        liquidationPrice:
-          selectedSide === 'LONG'
-            ? (currentPrice * (1 - 0.9 / leverage)).toFixed(2)
-            : (currentPrice * (1 + 0.9 / leverage)).toFixed(2),
-      }
-    }
-
-    return null
-  }, [watchSize, watchMargin, watchLeverage, currentPrice, selectedSide])
-
-  const handleSideChange = useCallback(
-    (side: OrderSide) => {
-      setSelectedSide(side)
-      setValue('side', side)
-    },
-    [setValue]
-  )
-
-  const handlePercentageClick = useCallback(
-    (percentage: number) => {
-      const margin = (balanceNum * percentage).toFixed(2)
-      setValue('margin', margin)
-
-      if (currentPrice > 0 && watchLeverage > 0) {
-        const notional = parseFloat(margin) * watchLeverage
-        const size = (notional / currentPrice).toFixed(4)
-        setValue('size', size)
-      }
-    },
-    [balanceNum, currentPrice, watchLeverage, setValue]
-  )
-
-  const handleLeverageChange = useCallback(
-    (value: number) => {
-      setValue('leverage', value)
-
-      if (watchMargin && currentPrice > 0) {
-        const notional = parseFloat(watchMargin) * value
-        const size = (notional / currentPrice).toFixed(4)
-        setValue('size', size)
-      }
-    },
-    [watchMargin, currentPrice, setValue]
-  )
-
-  const handleFormSubmit = useCallback(
-    async (values: OrderFormValues) => {
-      await onSubmit({
-        side: values.side,
-        size: values.size,
-        margin: values.margin,
-        leverage: values.leverage,
+    setIsSubmitting(true)
+    try {
+      await createOrder({
+        symbol: 'BTC',
+        side,
+        type: 'market',
+        margin: Number(margin),
+        leverage,
       })
-    },
-    [onSubmit]
-  )
+      setMargin('')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
 
   return (
-    <div className="w-full bg-gray-900 rounded-lg p-4">
-      <h3 className="text-lg font-semibold text-white mb-4">下单</h3>
-
-      <div className="flex gap-2 mb-4">
+    <div className="p-5">
+      {/* Long/Short toggle */}
+      <div className="grid grid-cols-2 gap-2 mb-5">
         <button
-          type="button"
-          onClick={() => handleSideChange('LONG')}
-          className={`flex-1 py-3 rounded-lg font-medium transition-colors ${
-            selectedSide === 'LONG'
-              ? 'bg-green-600 text-white'
-              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+          onClick={() => setSide('long')}
+          className={`py-2.5 rounded-md text-sm font-semibold transition-colors ${
+            side === 'long'
+              ? 'bg-pro-accent-green text-white'
+              : 'bg-pro-accent-green/10 text-pro-accent-green border border-pro-accent-green/20'
           }`}
         >
-          做多
+          开多
         </button>
         <button
-          type="button"
-          onClick={() => handleSideChange('SHORT')}
-          className={`flex-1 py-3 rounded-lg font-medium transition-colors ${
-            selectedSide === 'SHORT'
-              ? 'bg-red-600 text-white'
-              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+          onClick={() => setSide('short')}
+          className={`py-2.5 rounded-md text-sm font-semibold transition-colors ${
+            side === 'short'
+              ? 'bg-pro-accent-red text-white'
+              : 'bg-pro-accent-red/10 text-pro-accent-red border border-pro-accent-red/20'
           }`}
         >
-          做空
+          开空
         </button>
       </div>
 
-      <form onSubmit={handleSubmit(handleFormSubmit)} className="space-y-4">
-        <div>
-          <div className="flex justify-between items-center mb-2">
-            <label className="text-sm text-gray-400">杠杆</label>
-            <span className="text-sm font-medium text-white">
-              {watchLeverage}x
-            </span>
-          </div>
+      {/* Margin input */}
+      <div className="mb-4">
+        <div className="flex justify-between text-sm text-pro-gray-500 mb-1.5">
+          <span>保证金</span>
+          <span className="text-pro-accent-cyan">
+            可用: {availableBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })} USDC
+          </span>
+        </div>
+        <div className="relative">
           <input
-            type="range"
-            min={1}
-            max={TRADING_CONFIG.MAX_LEVERAGE}
-            {...register('leverage', { valueAsNumber: true })}
-            onChange={(e) => handleLeverageChange(parseInt(e.target.value))}
-            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            type="number"
+            value={margin}
+            onChange={(e) => setMargin(e.target.value)}
+            placeholder="0.00"
+            className="w-full px-4 py-3 bg-pro-gray-50 border border-pro-gray-200 rounded-lg text-pro-gray-800 font-mono focus:outline-none focus:border-pro-accent-cyan focus:bg-white transition-colors"
           />
-          <div className="flex justify-between text-xs text-gray-500 mt-1">
-            <span>1x</span>
-            <span>{TRADING_CONFIG.MAX_LEVERAGE}x</span>
-          </div>
+          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-pro-gray-500">
+            USDC
+          </span>
         </div>
+      </div>
 
-        <div>
-          <label className="block text-sm text-gray-400 mb-2">
-            保证金 (USDC)
-          </label>
-          <div className="relative">
-            <input
-              type="number"
-              step="0.01"
-              {...register('margin')}
-              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-600"
-              placeholder="0.00"
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
-              USDC
-            </span>
-          </div>
-          {errors.margin && (
-            <p className="text-red-500 text-xs mt-1">{errors.margin.message}</p>
-          )}
-
-          <div className="flex gap-2 mt-2">
-            {[0.25, 0.5, 0.75, 1].map((pct) => (
-              <button
-                key={pct}
-                type="button"
-                onClick={() => handlePercentageClick(pct)}
-                className="flex-1 py-1 text-xs bg-gray-800 text-gray-400 rounded hover:bg-gray-700 transition-colors"
-              >
-                {pct * 100}%
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-gray-500 mt-1">
-            可用余额: {balanceNum.toFixed(2)} USDC
-          </p>
+      {/* Leverage slider */}
+      <div className="mb-5">
+        <div className="flex justify-between text-sm text-pro-gray-500 mb-1.5">
+          <span>杠杆倍数</span>
+          <span className="text-pro-accent-cyan font-semibold">{leverage}x</span>
         </div>
+        <LeverageSlider value={leverage} onChange={setLeverage} />
+      </div>
 
-        <div>
-          <label className="block text-sm text-gray-400 mb-2">
-            数量 (BTC)
-          </label>
-          <div className="relative">
-            <input
-              type="number"
-              step="0.0001"
-              {...register('size')}
-              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-600"
-              placeholder="0.0000"
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
-              BTC
-            </span>
-          </div>
-          {errors.size && (
-            <p className="text-red-500 text-xs mt-1">{errors.size.message}</p>
-          )}
-        </div>
-
-        {estimate && (
-          <div className="bg-gray-800 rounded-lg p-3 space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">名义价值</span>
-              <span className="text-white">${estimate.notional}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">所需保证金</span>
-              <span className="text-white">${estimate.requiredMargin}</span>
-            </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400">预估强平价</span>
-              <span className="text-red-400">${estimate.liquidationPrice}</span>
-            </div>
-          </div>
+      {/* Submit button */}
+      <button
+        onClick={handleSubmit}
+        disabled={!margin || Number(margin) <= 0 || Number(margin) > availableBalance || isSubmitting}
+        className={`w-full py-3.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+          side === 'long'
+            ? 'bg-pro-accent-green text-white hover:bg-pro-accent-green/90'
+            : 'bg-pro-accent-red text-white hover:bg-pro-accent-red/90'
+        }`}
+      >
+        {isSubmitting ? (
+          <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+        ) : (
+          `开${side === 'long' ? '多' : '空'} BTC`
         )}
+      </button>
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className={`w-full py-4 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-            selectedSide === 'LONG'
-              ? 'bg-green-600 hover:bg-green-700 text-white'
-              : 'bg-red-600 hover:bg-red-700 text-white'
-          }`}
-        >
-          {isSubmitting ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              提交中...
+      {/* Order estimate summary */}
+      {Number(margin) > 0 && (
+        <div className="mt-5 pt-5 border-t border-pro-gray-100 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-pro-gray-500">仓位大小</span>
+            <span className="font-mono font-medium">
+              {estimate.positionSize.toLocaleString('en-US', { minimumFractionDigits: 2 })} USDC
             </span>
-          ) : (
-            `${selectedSide === 'LONG' ? '买入/做多' : '卖出/做空'}`
-          )}
-        </button>
-      </form>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-pro-gray-500">开仓价格</span>
+            <span className="font-mono font-medium">
+              ≈ {estimate.entryPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-pro-gray-500">清算价格</span>
+            <span className="font-mono font-medium text-pro-accent-red">
+              {estimate.liquidationPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-pro-gray-500">手续费</span>
+            <span className="font-mono font-medium">
+              {estimate.fee.toLocaleString('en-US', { minimumFractionDigits: 2 })} USDC
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -169,6 +169,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.1.2
         version: 19.2.3(@types/react@19.2.14)
+      tailwindcss-animate:
+        specifier: ^1.0.7
+        version: 1.0.7
       vitest:
         specifier: ^3.1.1
         version: 3.2.4(@types/node@24.12.0)(jiti@2.6.1)(tsx@4.21.0)
@@ -3338,6 +3341,11 @@ packages:
 
   tailwind-merge@3.5.0:
     resolution: {integrity: sha512-I8K9wewnVDkL1NTGoqWmVEIlUcB9gFriAEkXkfCjX5ib8ezGxtR3xD7iZIxrfArjEsH7F1CHD4RFUtxefdqV/A==}
+
+  tailwindcss-animate@1.0.7:
+    resolution: {integrity: sha512-bl6mpH3T7I3UFxuvDEXLxy/VuFxBk5bbzplh7tXI68mwMokNYd1t9qPBHlnyTwfa4JGC4zP516I1hYYtQ/vspA==}
+    peerDependencies:
+      tailwindcss: '>=3.0.0 || insiders'
 
   test-exclude@7.0.2:
     resolution: {integrity: sha512-u9E6A+ZDYdp7a4WnarkXPZOx8Ilz46+kby6p1yZ8zsGTz9gYa6FIS7lj2oezzNKmtdyyJNNmmXDppga5GB7kSw==}
@@ -7732,6 +7740,8 @@ snapshots:
       has-flag: 4.0.0
 
   tailwind-merge@3.5.0: {}
+
+  tailwindcss-animate@1.0.7: {}
 
   test-exclude@7.0.2:
     dependencies:
