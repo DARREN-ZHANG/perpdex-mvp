@@ -63,6 +63,13 @@ export const config = {
   },
   socket: {
     corsOrigin: getEnvVar("SOCKET_CORS_ORIGIN", "http://localhost:3000")
+  },
+  queue: {
+    redisUrl: getEnvVar("REDIS_URL", "redis://localhost:6379"),
+    hedgeQueueName: getEnvVar("HEDGE_QUEUE_NAME", "hedge.execute"),
+    dlqQueueName: getEnvVar("DLQ_QUEUE_NAME", "hedge.dlq"),
+    maxRetries: getEnvNumber("HEDGE_MAX_RETRIES", 3),
+    workerConcurrency: getEnvNumber("HEDGE_WORKER_CONCURRENCY", 5)
   }
 } as const;
 

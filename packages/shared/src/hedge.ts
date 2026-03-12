@@ -10,7 +10,7 @@ import {
   orderSideSchema
 } from "./domain";
 
-export const hedgeTaskSourceSchema = z.enum(["orderFill", "positionClose", "marginAdjust", "liquidation"]);
+export const hedgeTaskSourceSchema = z.enum(["ORDER_FILL", "POSITION_CLOSE", "MARGIN_ADJUST", "LIQUIDATION"]);
 
 export const hedgeQueueNames = {
   execute: "hedge.execute",
@@ -18,9 +18,9 @@ export const hedgeQueueNames = {
 } as const;
 
 export const hedgePriorityValues = {
-  high: 1,
-  normal: 5,
-  low: 10
+  HIGH: 1,
+  NORMAL: 5,
+  LOW: 10
 } as const;
 
 export const hedgeTaskPayloadSchema = z.object({
@@ -33,7 +33,7 @@ export const hedgeTaskPayloadSchema = z.object({
   side: orderSideSchema,
   size: decimalStringSchema,
   referencePrice: decimalStringSchema,
-  priority: hedgePrioritySchema.default("normal"),
+  priority: hedgePrioritySchema.default("NORMAL"),
   retryCount: z.number().int().nonnegative().default(0),
   maxRetries: z.number().int().positive().default(3),
   idempotencyKey: z.string().min(1),
@@ -65,10 +65,10 @@ export const hedgeTaskSummarySchema = hedgeTaskPayloadSchema.pick({
 });
 
 export const hedgeStatusTransitions = {
-  pending: ["submitted", "failed"],
-  submitted: ["filled", "failed"],
-  filled: [],
-  failed: []
+  PENDING: ["SUBMITTED", "FAILED"],
+  SUBMITTED: ["FILLED", "FAILED"],
+  FILLED: [],
+  FAILED: []
 } as const;
 
 export function canTransitionHedgeStatus(
