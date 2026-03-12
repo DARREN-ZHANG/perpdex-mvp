@@ -1,4 +1,4 @@
-// apps/web/config/wagmi.ts
+// apps/web/config/wagmi.tsx
 import { createAppKit } from '@reown/appkit/react'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { arbitrumSepolia } from '@reown/appkit/networks'
@@ -43,7 +43,7 @@ export const appKit = createAppKit({
   },
   features: {
     analytics: true,
-    socials: ['google', 'apple', 'email', 'x', 'github', 'discord'],
+    socials: ['google', 'apple', 'x', 'github', 'discord'] as const,
     email: true,
   },
   themeMode: 'dark',

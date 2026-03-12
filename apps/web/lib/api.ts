@@ -83,9 +83,15 @@ class ApiClient {
 
     const defaultHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
-      ...headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     }
+
+    // 合并自定义 headers
+    Object.entries(headers).forEach(([key, value]) => {
+      if (typeof value === 'string') {
+        defaultHeaders[key] = value
+      }
+    })
 
     let lastError: Error | null = null
 

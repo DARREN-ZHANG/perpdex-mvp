@@ -46,6 +46,14 @@ export interface RequestConfig extends RequestInit {
   retryDelay?: number
 }
 
+// 认证状态
+export interface AuthState {
+  isAuthenticated: boolean
+  isLoading: boolean
+  user: User | null
+  error: string | null
+}
+
 // API 错误类型
 export class ApiClientError extends Error {
   constructor(

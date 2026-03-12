@@ -45,7 +45,7 @@ export function useAuth() {
       const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null
 
       if (token && isConnected && address) {
-        setState((prev) => ({ ...prev, isLoading: true }))
+        setState((prev: AuthState) => ({ ...prev, isLoading: true }))
 
         try {
           const response = await api.getCurrentUser()
@@ -85,14 +85,14 @@ export function useAuth() {
   // 登录流程
   const login = useCallback(async (): Promise<boolean> => {
     if (!isConnected || !address || !chainId) {
-      setState((prev) => ({
+      setState((prev: AuthState) => ({
         ...prev,
         error: '请先连接钱包',
       }))
       return false
     }
 
-    setState((prev) => ({ ...prev, isLoading: true, error: null }))
+    setState((prev: AuthState) => ({ ...prev, isLoading: true, error: null }))
 
     try {
       // 1. 获取 SIWE challenge
@@ -133,7 +133,7 @@ export function useAuth() {
       return true
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '登录失败'
-      setState((prev) => ({
+      setState((prev: AuthState) => ({
         ...prev,
         isLoading: false,
         error: errorMessage,
@@ -144,7 +144,7 @@ export function useAuth() {
 
   // 退出登录
   const logout = useCallback(async () => {
-    setState((prev) => ({ ...prev, isLoading: true }))
+    setState((prev: AuthState) => ({ ...prev, isLoading: true }))
 
     try {
       await api.logout()
@@ -164,7 +164,7 @@ export function useAuth() {
 
   // 清除错误
   const clearError = useCallback(() => {
-    setState((prev) => ({ ...prev, error: null }))
+    setState((prev: AuthState) => ({ ...prev, error: null }))
   }, [])
 
   return {
