@@ -4,6 +4,10 @@
     "jsx": "preserve",
     "incremental": true,
     "allowJs": false,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    },
     "plugins": [
       {
         "name": "next"
@@ -14,6 +18,15 @@
     "next-env.d.ts",
     "app/**/*.ts",
     "app/**/*.tsx",
+    "components/**/*.ts",
+    "components/**/*.tsx",
+    "hooks/**/*.ts",
+    "hooks/**/*.tsx",
+    "lib/**/*.ts",
+    "lib/**/*.tsx",
+    "config/**/*.ts",
+    "config/**/*.tsx",
+    "types/**/*.ts",
     ".next/types/**/*.ts"
   ],
   "exclude": [
