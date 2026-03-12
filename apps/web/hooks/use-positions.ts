@@ -2,9 +2,12 @@
 'use client'
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { api } from '@/lib/api'
+import { socketClient } from '@/lib/socket'
+import { useAuth } from './use-auth'
 import type { Position } from '@perpdex/shared'
+import type { PositionUpdate } from '@/types/socket'
 
 // 格式化金额
 export function formatAmount(amount: string, decimals: number = 2): string {
@@ -90,6 +93,7 @@ async function closePosition(positionId: string): Promise<void> {
 export function usePositions() {
   const queryClient = useQueryClient()
   const [closingPositionId, setClosingPositionId] = useState<string | null>(null)
+  const { user } = useAuth()
 
   const {
     data: positions = [],
@@ -100,9 +104,45 @@ export function usePositions() {
   } = useQuery({
     queryKey: ['positions'],
     queryFn: fetchPositions,
-    refetchInterval: 2000, // 2秒自动刷新
-    staleTime: 1000,
+    staleTime: 30000, // 30秒缓存时间
   })
+
+  // WebSocket 订阅仓位实时更新
+  useEffect(() => {
+    if (!user?.id) return
+
+    // 确保 Socket 已连接
+    const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : undefined
+    const socket = socketClient.connect(token)
+
+    // 订阅仓位更新
+    const unsubscribe = socketClient.subscribePositions(
+      user.id,
+      (data: PositionUpdate) => {
+        queryClient.setQueryData(['positions'], (old: Position[] | undefined) => {
+          const existingPositions = old ?? []
+
+          // 根据 PositionUpdate 更新现有仓位
+          return existingPositions.map((pos) => {
+            if (pos.id === data.positionId) {
+              return {
+                ...pos,
+                markPrice: data.markPrice,
+                unrealizedPnl: data.unrealizedPnl,
+                liquidationPrice: data.liquidationPrice,
+                updatedAt: data.updatedAt,
+              }
+            }
+            return pos
+          })
+        })
+      }
+    )
+
+    return () => {
+      unsubscribe()
+    }
+  }, [user?.id, queryClient])
 
   const closeMutation = useMutation({
     mutationFn: closePosition,

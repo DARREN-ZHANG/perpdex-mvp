@@ -122,3 +122,8 @@ export class BlockchainClient {
 }
 
 export const blockchainClient = new BlockchainClient();
+
+/**
+ * 导出 publicClient 用于健康检查
+ */
+export const publicClient = blockchainClient["publicClient"];

@@ -16,6 +16,15 @@ export interface SocketUser {
 }
 
 /**
+ * 余额更新数据
+ */
+export interface BalanceUpdate {
+  availableBalance: string;
+  lockedBalance: string;
+  totalBalance: string;
+}
+
+/**
  * 创建 Socket.IO 服务器
  */
 export function createSocketServer(app: FastifyInstance): Server {
@@ -131,6 +140,15 @@ export function emitMarketUpdate(symbol: string, data: unknown): void {
 export function emitPositionUpdate(userId: string, data: unknown): void {
   if (!io) return;
   io.to(`position:${userId}`).emit(`position:${userId}:update`, data);
+}
+
+/**
+ * 推送余额更新
+ * Balance updates use the same room as positions
+ */
+export function emitBalanceUpdate(userId: string, data: BalanceUpdate): void {
+  if (!io) return;
+  io.to(`position:${userId}`).emit(`balance:${userId}:update`, data);
 }
 
 /**

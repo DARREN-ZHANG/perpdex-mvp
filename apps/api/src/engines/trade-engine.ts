@@ -14,6 +14,7 @@ import {
   type PositionInput,
   type MarkPriceInput
 } from "./pnl-calculator";
+import { emitPositionUpdate, emitBalanceUpdate } from "../ws/index";
 
 export interface CreateOrderInput {
   userId: string;
@@ -88,11 +89,13 @@ export class TradeEngine {
     }
 
     // 4. 计算清算价格
+    // margin 使用 USDC (6 decimals)，需要转换为 USD 单位
+    const marginInUsd = new Decimal(margin.toString()).div(new Decimal(1_000_000));
     const positionInput: PositionInput = {
       side,
       positionSize: size,
       entryPrice: markPrice,
-      margin: new Decimal(margin.toString()),
+      margin: marginInUsd,
       leverage
     };
 
@@ -174,7 +177,27 @@ export class TradeEngine {
       executedPrice: markPrice.toString()
     });
 
-    // 6. 创建对冲任务（异步）
+    // 6. 推送仓位更新
+    emitPositionUpdate(userId, {
+      type: "POSITION_CREATED",
+      position: {
+        id: result.position.id,
+        symbol,
+        side,
+        positionSize: size.toString(),
+        entryPrice: markPrice.toString(),
+        status: "OPEN"
+      }
+    });
+
+    // 推送余额更新
+    emitBalanceUpdate(userId, {
+      availableBalance: (account.availableBalance - margin).toString(),
+      lockedBalance: (account.lockedBalance + margin).toString(),
+      totalBalance: account.availableBalance.toString()
+    });
+
+    // 7. 创建对冲任务（异步）
     // 对冲方向：用户做多 -> 平台做空，用户做空 -> 平台做多
     const hedgeSide = side === "LONG" ? "SHORT" : "LONG";
     const hedgeTaskId = crypto.randomUUID();
@@ -260,11 +283,13 @@ export class TradeEngine {
     const markPrice = await marketService.getMarkPrice(position.symbol);
 
     // 3. 计算 PnL
+    // margin 使用 USDC (6 decimals)，需要转换为 USD 单位
+    const marginInUsd = new Decimal(position.margin.toString()).div(new Decimal(1_000_000));
     const positionInput: PositionInput = {
       side: position.side,
       positionSize: new Decimal(position.positionSize.toString()),
       entryPrice: new Decimal(position.entryPrice.toString()),
-      margin: new Decimal(position.margin.toString()),
+      margin: marginInUsd,
       leverage: 10 // TODO: 从 position 获取
     };
 
@@ -272,7 +297,10 @@ export class TradeEngine {
     const metrics = calculatePositionMetrics(positionInput, marketInput);
 
     const realizedPnl = metrics.unrealizedPnl;
-    const marginReturn = new Decimal(position.margin.toString()).plus(realizedPnl);
+    // PnL 以 USD 为单位，需要转换为 USDC (6 decimals) 才能与 margin 相加
+    const realizedPnlInUsdc = realizedPnl.times(new Decimal(1_000_000));
+    const marginReturn = new Decimal(position.margin.toString()).plus(realizedPnlInUsdc);
+    const balanceChange = BigInt(marginReturn.floor().toString());
 
     // 4. 事务：更新仓位、创建平仓订单、释放保证金
     const result = await prisma.$transaction(async (tx) => {
@@ -316,7 +344,6 @@ export class TradeEngine {
       }
 
       // 释放保证金 + 结算盈亏
-      const balanceChange = BigInt(marginReturn.floor().toString());
       await tx.account.update({
         where: { id: account.id },
         data: {
@@ -343,7 +370,7 @@ export class TradeEngine {
             userId,
             accountId: account.id,
             type: "REALIZED_PNL",
-            amount: BigInt(realizedPnl.abs().floor().toString()),
+            amount: BigInt(realizedPnlInUsdc.abs().floor().toString()),
             status: "CONFIRMED"
           }
         });
@@ -361,7 +388,25 @@ export class TradeEngine {
       markPrice: markPrice.toString()
     });
 
-    // 5. 创建对冲任务（异步）
+    // 推送仓位更新
+    emitPositionUpdate(userId, {
+      type: "POSITION_CLOSED",
+      position: {
+        id: positionId,
+        symbol: position.symbol,
+        realizedPnl: realizedPnl.toString(),
+        status: "CLOSED"
+      }
+    });
+
+    // 推送余额更新
+    emitBalanceUpdate(userId, {
+      availableBalance: balanceChange.toString(),
+      lockedBalance: "0", // 保证金已释放
+      totalBalance: balanceChange.toString()
+    });
+
+    // 6. 创建对冲任务（异步）
     // 平仓时平台也需要平掉对冲仓位，所以对冲方向是同向
     const hedgeTaskId = crypto.randomUUID();
 
@@ -472,6 +517,16 @@ export class TradeEngine {
           status: "CONFIRMED"
         }
       });
+    });
+
+    // 推送清算更新
+    emitPositionUpdate(position.userId, {
+      type: "POSITION_LIQUIDATED",
+      position: {
+        id: positionId,
+        symbol: position.symbol,
+        status: "LIQUIDATED"
+      }
     });
 
     // 创建清算对冲任务（高优先级）

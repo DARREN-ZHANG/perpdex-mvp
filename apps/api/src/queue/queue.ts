@@ -4,6 +4,7 @@
  * 对冲任务队列 + 死信队列
  */
 import { Queue, QueueEvents } from "bullmq";
+import Redis from "ioredis";
 import { config } from "../config/index";
 import { logger } from "../utils/logger";
 import { QUEUE_NAMES, RETRY_CONFIG, type HedgeJobData } from "./types";
@@ -14,6 +15,9 @@ const redisConnection = {
   port: Number.parseInt(new URL(config.queue.redisUrl).port || "6379", 10),
   maxRetriesPerRequest: null // BullMQ 要求
 };
+
+// Redis 客户端用于健康检查
+let redisHealthClient: Redis | null = null;
 
 // 对冲执行队列
 let hedgeQueue: Queue<HedgeJobData> | null = null;
@@ -156,5 +160,33 @@ export async function closeQueues(): Promise<void> {
   if (dlqQueue) {
     await dlqQueue.close();
   }
+  if (redisHealthClient) {
+    redisHealthClient.disconnect();
+    redisHealthClient = null;
+  }
   logger.info({ msg: "Queues closed" });
+}
+
+/**
+ * 获取 Redis 客户端用于健康检查
+ */
+export function getRedisHealthClient(): Redis | null {
+  if (!redisHealthClient) {
+    try {
+      redisHealthClient = new Redis({
+        host: redisConnection.host,
+        port: redisConnection.port,
+        maxRetriesPerRequest: null,
+        enableOfflineQueue: false, // 健康检查不需要离线队列
+        lazyConnect: true // 延迟连接，仅在需要时连接
+      });
+      redisHealthClient.on("error", (err: Error) => {
+        logger.error({ msg: "Redis health client error", error: err.message });
+      });
+    } catch (error) {
+      logger.error({ msg: "Failed to create Redis health client", error });
+      return null;
+    }
+  }
+  return redisHealthClient;
 }
