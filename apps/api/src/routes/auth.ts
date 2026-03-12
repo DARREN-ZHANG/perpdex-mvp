@@ -3,15 +3,19 @@
  * 鉴权路由
  * 处理 SIWE 登录流程
  */
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { AuthService } from "../services/auth.service";
-import { optionalAuth } from "../middleware/auth";
+import { optionalAuth, type JwtUser } from "../middleware/auth";
 import { config } from "../config/index";
 
 const AUTH_CHALLENGE_PATH = "/api/auth/challenge";
 const AUTH_VERIFY_PATH = "/api/auth/verify";
 const AUTH_SESSION_PATH = "/api/auth/session";
 const AUTH_LOGOUT_PATH = "/api/auth/logout";
+
+function getJwtUser(request: FastifyRequest): JwtUser | undefined {
+  return request.user as JwtUser | undefined;
+}
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   const authService = new AuthService(app);
@@ -68,7 +72,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       preHandler: [optionalAuth]
     },
     async (request, reply) => {
-      if (!request.user) {
+      const user = getJwtUser(request);
+
+      if (!user) {
         return {
           data: {
             authenticated: false,
@@ -79,7 +85,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         };
       }
 
-      const result = await authService.getSession(request.user.id);
+      const result = await authService.getSession(user.id);
 
       return {
         data: result,
@@ -91,7 +97,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   // POST /api/auth/logout - 登出
   app.post(AUTH_LOGOUT_PATH, async (request, reply) => {
-    if (!request.user) {
+    const user = getJwtUser(request);
+
+    if (!user) {
       return {
         data: { success: true },
         error: null,
@@ -99,7 +107,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       };
     }
 
-    const result = await authService.logout(request.user.id);
+    const result = await authService.logout(user.id);
 
     return {
       data: result,

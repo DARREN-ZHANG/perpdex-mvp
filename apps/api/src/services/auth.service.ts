@@ -5,7 +5,12 @@
  */
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../db/client";
-import { generateSiweMessage, verifySiweSignature } from "../utils/siwe";
+import {
+  generateSiweMessage,
+  verifySiweSignature,
+  type GenerateSiweInput,
+  type VerifySiweInput
+} from "../utils/siwe";
 import { signJwt } from "../utils/jwt";
 import { config } from "../config/index";
 

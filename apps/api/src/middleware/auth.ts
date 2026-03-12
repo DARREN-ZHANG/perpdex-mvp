@@ -5,13 +5,9 @@
  */
 import type { FastifyRequest, FastifyReply } from "fastify";
 
-declare module "fastify" {
-  interface FastifyRequest {
-    user?: {
-      id: string;
-      walletAddress: string;
-    };
-  }
+export interface JwtUser {
+  id: string;
+  walletAddress: string;
 }
 
 /**
@@ -47,7 +43,7 @@ export async function requireAuth(
     request.user = {
       id: decoded.sub,
       walletAddress: decoded.walletAddress
-    };
+    } as JwtUser;
   } catch {
     await reply.status(401).send({
       data: null,
@@ -86,7 +82,7 @@ export async function optionalAuth(
     request.user = {
       id: decoded.sub,
       walletAddress: decoded.walletAddress
-    };
+    } as JwtUser;
   } catch {
     // Token invalid, continue without user
   }

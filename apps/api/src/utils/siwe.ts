@@ -61,18 +61,21 @@ export function generateSiweMessage(input: GenerateSiweInput): GenerateSiweResul
  * 验证 SIWE 签名
  */
 export async function verifySiweSignature(input: VerifySiweInput): Promise<VerifySiweResult> {
-  const siweMessage = await SiweMessage.verify({
-    message: input.message,
+  // Parse the SIWE message from string
+  const siweMessage = new SiweMessage(input.message);
+
+  // Verify the signature
+  const result = await siweMessage.verify({
     signature: input.signature
   });
 
-  if (!siweMessage.success) {
+  if (!result.success) {
     throw new Error("SIWE signature verification failed");
   }
 
   return {
-    address: siweMessage.data.address,
-    nonce: siweMessage.data.nonce ?? "",
-    chainId: siweMessage.data.chainId ?? 1
+    address: result.data.address,
+    nonce: result.data.nonce ?? "",
+    chainId: result.data.chainId ?? 1
   };
 }
