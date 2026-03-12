@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useTransactions } from '@/hooks/use-transactions'
-import type { Transaction, TransactionType, TransactionStatus } from '@/types/api'
+import type { Transaction, TransactionType } from '@/types/api'
 
 const TYPE_FILTERS = [
   { label: '全部', value: 'all' },

@@ -30,8 +30,9 @@ export function PriceChart() {
     script.src = 'https://s3.tradingview.com/tv.js'
     script.async = true
     script.onload = () => {
-      if (typeof window !== 'undefined' && (window as any).TradingView) {
-        new (window as any).TradingView.widget({
+      const win = window as unknown as { TradingView?: { widget: new (config: unknown) => unknown } }
+      if (typeof window !== 'undefined' && win.TradingView) {
+        new win.TradingView.widget({
           autosize: true,
           symbol: 'BINANCE:BTCUSDT',
           interval: timeframe,
