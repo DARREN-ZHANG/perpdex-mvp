@@ -1,82 +1,65 @@
-// apps/web/components/asset/balance-card.tsx
 'use client'
 
 import { useBalance } from '@/hooks/use-balance'
-import { formatUSDC } from '@/lib/contracts'
+import { usePositions } from '@/hooks/use-positions'
 
-interface BalanceCardProps {
-  onDeposit: () => void
-  onWithdraw: () => void
+interface SummaryCardProps {
+  label: string
+  value: number
+  prefix?: string
+  variant?: 'default' | 'green' | 'red'
 }
 
-export function BalanceCard({ onDeposit, onWithdraw }: BalanceCardProps) {
-  const { balance, isLoading } = useBalance()
-
-  const formatAmount = (amount: string) => {
-    try {
-      return formatUSDC(BigInt(amount))
-    } catch {
-      return '0'
-    }
-  }
+function SummaryCard({ label, value, prefix = '$', variant = 'default' }: SummaryCardProps) {
+  const valueClass =
+    variant === 'green'
+      ? 'text-pro-accent-green'
+      : variant === 'red'
+      ? 'text-pro-accent-red'
+      : 'text-pro-gray-800'
 
   return (
-    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-      <h2 className="text-lg font-semibold text-white mb-4">账户余额</h2>
-
-      <div className="space-y-4">
-        {/* 可用余额 */}
-        <div className="flex justify-between items-center">
-          <span className="text-gray-400">可用余额</span>
-          <span className="text-2xl font-bold text-white">
-            {isLoading ? (
-              <span className="inline-block w-24 h-8 bg-gray-800 rounded animate-pulse" />
-            ) : (
-              `${balance ? formatAmount(balance.availableBalance) : '0'} USDC`
-            )}
-          </span>
-        </div>
-
-        {/* 锁定余额 */}
-        <div className="flex justify-between items-center">
-          <span className="text-gray-400">锁定保证金</span>
-          <span className="text-lg text-white">
-            {isLoading ? (
-              <span className="inline-block w-16 h-6 bg-gray-800 rounded animate-pulse" />
-            ) : (
-              `${balance ? formatAmount(balance.lockedBalance) : '0'} USDC`
-            )}
-          </span>
-        </div>
-
-        {/* 总权益 */}
-        <div className="flex justify-between items-center pt-4 border-t border-gray-800">
-          <span className="text-gray-400">总权益</span>
-          <span className="text-xl font-semibold text-green-400">
-            {isLoading ? (
-              <span className="inline-block w-20 h-6 bg-gray-800 rounded animate-pulse" />
-            ) : (
-              `${balance ? formatAmount(balance.equity) : '0'} USDC`
-            )}
-          </span>
-        </div>
+    <div className="bg-white rounded-lg shadow-panel p-5">
+      <div className="text-xs text-pro-gray-500 uppercase tracking-wider mb-2">
+        {label}
       </div>
-
-      {/* 操作按钮 */}
-      <div className="flex gap-3 mt-6">
-        <button
-          onClick={onDeposit}
-          className="flex-1 px-4 py-3 bg-green-500 hover:bg-green-600 text-white font-medium rounded-lg transition-colors"
-        >
-          充值
-        </button>
-        <button
-          onClick={onWithdraw}
-          className="flex-1 px-4 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-colors"
-        >
-          提现
-        </button>
+      <div className={`text-2xl font-bold font-mono ${valueClass}`}>
+        {prefix}
+        {value.toLocaleString('en-US', { minimumFractionDigits: 2 })}
       </div>
+    </div>
+  )
+}
+
+export function BalanceSummary() {
+  const { balance } = useBalance()
+  const { positions } = usePositions()
+
+  // 解析余额数据（字符串转为数字）
+  const equity = parseFloat(balance?.equity || '0')
+  const availableBalance = parseFloat(balance?.availableBalance || '0')
+  const lockedBalance = parseFloat(balance?.lockedBalance || '0')
+  const totalValue = equity + availableBalance
+
+  // 计算未实现盈亏
+  const unrealizedPnl =
+    positions?.reduce((sum, pos) => sum + parseFloat(pos.unrealizedPnl || '0'), 0) || 0
+
+  return (
+    <div className="grid grid-cols-4 gap-4">
+      <SummaryCard label="总资产价值" value={totalValue} />
+      <SummaryCard
+        label="可用余额"
+        value={availableBalance}
+        variant="green"
+      />
+      <SummaryCard label="已锁定保证金" value={lockedBalance} />
+      <SummaryCard
+        label="未实现盈亏"
+        value={Math.abs(unrealizedPnl)}
+        variant={unrealizedPnl >= 0 ? 'green' : 'red'}
+        prefix={unrealizedPnl >= 0 ? '+$' : '-$'}
+      />
     </div>
   )
 }
