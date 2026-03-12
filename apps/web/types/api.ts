@@ -66,3 +66,55 @@ export class ApiClientError extends Error {
     this.name = 'ApiClientError'
   }
 }
+
+// 资产相关类型
+export interface AccountBalance {
+  userId: string
+  asset: 'USDC'
+  availableBalance: string
+  lockedBalance: string
+  equity: string
+  updatedAt: string
+}
+
+// 交易记录类型
+export type TransactionType = 'DEPOSIT' | 'WITHDRAW' | 'MARGIN_LOCK' | 'MARGIN_RELEASE' | 'REALIZED_PNL' | 'FEE' | 'LIQUIDATION'
+export type TransactionStatus = 'PENDING' | 'CONFIRMED' | 'FAILED' | 'REVERTED'
+
+export interface Transaction {
+  id: string
+  userId: string
+  type: TransactionType
+  eventName?: 'DEPOSIT' | 'WITHDRAW' | null
+  txHash?: string | null
+  logIndex?: number | null
+  amount: string
+  status: TransactionStatus
+  idempotencyKey?: string
+  createdAt: string
+  updatedAt: string
+  confirmedAt?: string | null
+}
+
+// 提现请求
+export interface WithdrawRequest {
+  amount: string
+}
+
+export interface WithdrawPayload {
+  transactionId: string
+  txHash?: string
+  status: TransactionStatus
+}
+
+// 分页查询参数
+export interface PaginationQuery {
+  cursor?: string
+  limit?: number
+}
+
+export interface PaginatedResponse<T> {
+  items: T[]
+  nextCursor?: string
+  hasMore: boolean
+}
