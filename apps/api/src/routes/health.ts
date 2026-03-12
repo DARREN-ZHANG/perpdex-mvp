@@ -32,7 +32,7 @@ async function checkDatabase(): Promise<"ok" | "down" | "unknown"> {
 }
 
 export async function healthRoutes(app: FastifyInstance): Promise<void> {
-  app.get(HEALTH_PATH, async (request, reply) => {
+  app.get(HEALTH_PATH, async (request) => {
     const dbStatus = await checkDatabase();
 
     const services: HealthServices = {

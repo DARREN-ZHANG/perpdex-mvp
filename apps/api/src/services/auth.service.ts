@@ -7,9 +7,7 @@ import type { FastifyInstance } from "fastify";
 import { prisma } from "../db/client";
 import {
   generateSiweMessage,
-  verifySiweSignature,
-  type GenerateSiweInput,
-  type VerifySiweInput
+  verifySiweSignature
 } from "../utils/siwe";
 import { signJwt } from "../utils/jwt";
 import { config } from "../config/index";
@@ -198,7 +196,8 @@ export class AuthService {
     };
   }
 
-  async logout(userId: string): Promise<{ success: boolean }> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async logout(_userId: string): Promise<{ success: boolean }> {
     // In a full implementation, you would add the token to a blacklist in Redis
     // For MVP, we just return success
     return { success: true };

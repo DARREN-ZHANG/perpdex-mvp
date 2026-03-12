@@ -56,7 +56,7 @@ export function createSocketServer(app: FastifyInstance): Server {
         walletAddress: decoded.walletAddress
       } as SocketUser;
       next();
-    } catch (error) {
+    } catch {
       // Token invalid, allow anonymous connection
       socket.data.user = null;
       next();

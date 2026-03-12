@@ -63,17 +63,11 @@ export async function requireAuth(
  * 如果 token 存在则注入用户信息，否则继续
  */
 export async function optionalAuth(
-  request: FastifyRequest,
-  reply: FastifyReply
+  request: FastifyRequest
 ): Promise<void> {
   const authHeader = request.headers.authorization;
-
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return; // No token, continue without user
-  }
-
+  if (!authHeader || !authHeader.startsWith("Bearer ")) return;
   const token = authHeader.slice(7);
-
   try {
     const decoded = request.server.jwt.verify(token) as {
       sub: string;

@@ -21,7 +21,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   const authService = new AuthService(app);
 
   // GET /api/auth/challenge - 获取 SIWE 挑战消息
-  app.get(AUTH_CHALLENGE_PATH, async (request, reply) => {
+  app.get(AUTH_CHALLENGE_PATH, async (request) => {
     const query = request.query as { walletAddress: string; chainId?: string };
 
     const chainId = query.chainId
@@ -41,7 +41,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // POST /api/auth/verify - 验证签名并获取 token
-  app.post(AUTH_VERIFY_PATH, async (request, reply) => {
+  app.post(AUTH_VERIFY_PATH, async (request) => {
     const body = request.body as {
       walletAddress: string;
       chainId: number;
@@ -71,7 +71,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     {
       preHandler: [optionalAuth]
     },
-    async (request, reply) => {
+    async (request) => {
       const user = getJwtUser(request);
 
       if (!user) {
@@ -96,7 +96,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   );
 
   // POST /api/auth/logout - 登出
-  app.post(AUTH_LOGOUT_PATH, async (request, reply) => {
+  app.post(AUTH_LOGOUT_PATH, async (request) => {
     const user = getJwtUser(request);
 
     if (!user) {
