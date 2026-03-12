@@ -3,11 +3,11 @@
  * 清算检查任务
  * 定期检查是否有仓位需要清算
  */
+import type { ScheduledTask } from "node-cron";
 import cron from "node-cron";
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
 import { addHedgeTask } from "../queue/queue";
-import { generateId } from "@perpdex/shared";
 
 const LIQUIDATION_CHECK_INTERVAL = "*/5 * * * *"; // 每 5 分钟
 
@@ -30,32 +30,31 @@ export async function runLiquidationCheck(): Promise<void> {
     });
 
     for (const position of positions) {
-      // 简化判断：如果 marginRatio < 0.1，需要清算
+      // 简化判断：如果 liquidationPrice 达到，需要清算
       // 实际应该使用实时价格计算
-      if (position.marginRatio && position.marginRatio < 100000) { // 0.1 * 1e6
-        logger.warn({
-          msg: "Position below maintenance margin",
-          positionId: position.id,
-          marginRatio: position.marginRatio.toString()
-        });
+      // TODO: 使用实时价格计算是否需要清算
+      // if (shouldLiquidate(position)) {
+      //   logger.warn({
+      //     msg: "Position below maintenance margin",
+      //     positionId: position.id
+      //   });
 
-        // TODO: 创建清算任务
-        // await addHedgeTask({
-        //   taskId: generateId(),
-        //   source: "liquidation",
-        //   userId: position.userId,
-        //   positionId: position.id,
-        //   symbol: position.symbol,
-        //   side: position.side,
-        //   size: position.positionSize.toString(),
-        //   referencePrice: "0",
-        //   priority: "high",
-        //   retryCount: 0,
-        //   maxRetries: 3,
-        //   idempotencyKey: `liquidation-${position.id}-${Date.now()}`,
-        //   requestedAt: new Date().toISOString()
-        // });
-      }
+      //   await addHedgeTask({
+      //     taskId: crypto.randomUUID(),
+      //     source: "liquidation",
+      //     userId: position.userId,
+      //     positionId: position.id,
+      //     symbol: "BTC",
+      //     side: position.side.toLowerCase() as "long" | "short",
+      //     size: position.positionSize.toString(),
+      //     referencePrice: "0",
+      //     priority: "high",
+      //     retryCount: 0,
+      //     maxRetries: 3,
+      //     idempotencyKey: `liquidation-${position.id}-${Date.now()}`,
+      //     requestedAt: new Date().toISOString()
+      //   });
+      // }
     }
 
     logger.info({
@@ -73,7 +72,7 @@ export async function runLiquidationCheck(): Promise<void> {
 /**
  * 启动定时清算检查
  */
-export function startLiquidationScheduler(): cron.ScheduledTask {
+export function startLiquidationScheduler(): ScheduledTask {
   logger.info({
     msg: "Starting liquidation scheduler",
     interval: LIQUIDATION_CHECK_INTERVAL

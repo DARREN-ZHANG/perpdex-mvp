@@ -16,25 +16,26 @@ export const signedDecimalStringSchema = z
 export const chainIdSchema = z.number().int().positive();
 export const leverageSchema = z.number().int().min(1).max(20);
 export const marketSymbolSchema = z.enum(supportedMarketSymbols);
-export const orderSideSchema = z.enum(["long", "short"]);
-export const orderTypeSchema = z.enum(["market"]);
-export const orderStatusSchema = z.enum(["pending", "filled", "failed", "canceled"]);
-export const positionStatusSchema = z.enum(["open", "closed", "liquidated"]);
-export const riskLevelSchema = z.enum(["safe", "warning", "danger"]);
+// 与 Prisma Schema 保持一致，使用大写枚举
+export const orderSideSchema = z.enum(["LONG", "SHORT"]);
+export const orderTypeSchema = z.enum(["MARKET"]);
+export const orderStatusSchema = z.enum(["PENDING", "FILLED", "FAILED", "CANCELED"]);
+export const positionStatusSchema = z.enum(["OPEN", "CLOSED", "LIQUIDATED"]);
+export const riskLevelSchema = z.enum(["SAFE", "WARNING", "DANGER"]);
 export const transactionTypeSchema = z.enum([
-  "deposit",
-  "withdraw",
-  "marginLock",
-  "marginRelease",
-  "realizedPnl",
-  "fee",
-  "liquidation"
+  "DEPOSIT",
+  "WITHDRAW",
+  "MARGIN_LOCK",
+  "MARGIN_RELEASE",
+  "REALIZED_PNL",
+  "FEE",
+  "LIQUIDATION"
 ]);
-export const transactionStatusSchema = z.enum(["pending", "confirmed", "failed", "reverted"]);
-export const chainEventNameSchema = z.enum(["Deposit", "Withdraw"]);
-export const hedgeStatusSchema = z.enum(["pending", "submitted", "filled", "failed"]);
-export const hedgePrioritySchema = z.enum(["high", "normal", "low"]);
-export const hedgeTriggerSchema = z.enum(["open", "close", "marginAdjust", "liquidation", "manual"]);
+export const transactionStatusSchema = z.enum(["PENDING", "CONFIRMED", "FAILED", "REVERTED"]);
+export const chainEventNameSchema = z.enum(["DEPOSIT", "WITHDRAW"]);
+export const hedgeStatusSchema = z.enum(["PENDING", "SUBMITTED", "FILLED", "FAILED"]);
+export const hedgePrioritySchema = z.enum(["HIGH", "NORMAL", "LOW"]);
+export const hedgeTriggerSchema = z.enum(["OPEN", "CLOSE", "MARGIN_ADJUST", "LIQUIDATION", "MANUAL"]);
 export const paginationQuerySchema = z.object({
   cursor: z.string().min(1).optional(),
   limit: z.number().int().min(1).max(100).default(20)
@@ -52,7 +53,7 @@ export const userSchema = z.object({
 
 export const accountBalanceSchema = z.object({
   userId: idSchema,
-  asset: z.literal("USDC"),
+  asset: z.literal("USDC"),  // AccountAsset 枚举值，字符串形式
   availableBalance: usdcAmountStringSchema,
   lockedBalance: usdcAmountStringSchema,
   equity: usdcAmountStringSchema,

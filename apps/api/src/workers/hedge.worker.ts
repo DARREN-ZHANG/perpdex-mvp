@@ -4,6 +4,7 @@
  * 消费 BullMQ 队列任务，向 Hyperliquid 提交反向订单
  */
 import { Worker, Job } from "bullmq";
+import Decimal from "decimal.js";
 import { prisma } from "../db/client";
 import { config } from "../config/index";
 import { logger } from "../utils/logger";
@@ -132,7 +133,7 @@ async function processHedgeJob(
     });
 
     // 4. 执行反向订单
-    // 对冲方向：用户做多 -> 平台做空，用户做空 -> 平台做多
+    // 对冲方向：用户做多(LONG) -> 平台做空(sell)，用户做空(SHORT) -> 平台做多(buy)
     const hedgeSide = data.side === "LONG" ? "sell" : "buy";
 
     const result = await hyperliquidClient.submitMarketOrder(
@@ -147,7 +148,7 @@ async function processHedgeJob(
       data: {
         status: "FILLED",
         externalOrderId: result.orderId,
-        referencePrice: result.averagePrice ? BigInt(Math.floor(parseFloat(result.averagePrice) * 1e6)) : null,
+        referencePrice: result.averagePrice ? new Decimal(result.averagePrice).mul(1e6).toFixed() : null,
         filledAt: new Date()
       }
     });
@@ -186,7 +187,8 @@ async function processHedgeJob(
     }
 
     // 检查是否应该移到 DLQ
-    if (job.attemptsMade >= job.opts.attempts ?? 3) {
+    const maxAttempts = job.opts.attempts ?? 3;
+    if (maxAttempts !== undefined && job.attemptsMade >= maxAttempts) {
       await moveToDLQ(data.taskId, errorMessage, data);
     }
 

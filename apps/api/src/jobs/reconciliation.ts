@@ -3,6 +3,7 @@
  * 净头寸对账任务
  * 定期核对平台净头寸与 Hyperliquid 头寸是否一致
  */
+import type { ScheduledTask } from "node-cron";
 import cron from "node-cron";
 import { Decimal } from "@prisma/client/runtime/library";
 import { prisma } from "../db/client";
@@ -23,10 +24,10 @@ export interface ReconciliationResult {
  * 获取平台净头寸
  * 净头寸 = 所有用户 Long 仓位 - 所有用户 Short 仓位
  */
-async function getPlatformNetPosition(symbol: string): Promise<Decimal> {
+async function getPlatformNetPosition(symbol: "BTC"): Promise<Decimal> {
   const positions = await prisma.position.findMany({
     where: {
-      symbol,
+      symbol: symbol as "BTC",
       status: "OPEN"
     },
     select: {
@@ -52,7 +53,7 @@ async function getPlatformNetPosition(symbol: string): Promise<Decimal> {
 /**
  * 获取 Hyperliquid 净头寸
  */
-async function getHyperliquidNetPosition(symbol: string): Promise<Decimal> {
+async function getHyperliquidNetPosition(symbol: "BTC"): Promise<Decimal> {
   const positions = await hyperliquidClient.getPositions();
 
   const position = positions.find((p) => p.coin === symbol);
@@ -68,7 +69,7 @@ async function getHyperliquidNetPosition(symbol: string): Promise<Decimal> {
  * 执行对账检查
  */
 export async function runReconciliation(
-  symbol: string = "BTC"
+  symbol: "BTC" = "BTC"
 ): Promise<ReconciliationResult> {
   logger.info({ msg: "Starting reconciliation", symbol });
 
@@ -124,7 +125,7 @@ export async function runReconciliation(
 /**
  * 启动定时对账
  */
-export function startReconciliationScheduler(): cron.ScheduledTask {
+export function startReconciliationScheduler(): ScheduledTask {
   logger.info({
     msg: "Starting reconciliation scheduler",
     interval: RECONCILIATION_INTERVAL
@@ -132,7 +133,7 @@ export function startReconciliationScheduler(): cron.ScheduledTask {
 
   return cron.schedule(RECONCILIATION_INTERVAL, async () => {
     try {
-      await runReconciliation("BTC");
+      await runReconciliation();
     } catch (error) {
       logger.error({
         msg: "Reconciliation job failed",
