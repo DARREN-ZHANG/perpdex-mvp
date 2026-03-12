@@ -6,7 +6,6 @@
 import {
   createPublicClient,
   http,
-  parseAbiItem,
   type Address,
   type Log
 } from "viem";
@@ -16,12 +15,6 @@ import { logger } from "../utils/logger";
 import { BlockCursorManager } from "./block-cursor";
 import { EventHandler, type DepositEvent, type WithdrawEvent } from "./event-handler";
 
-// Vault 合约 ABI (事件定义)
-const VAULT_EVENTS = [
-  parseAbiItem("event Deposit(address indexed user, uint256 amount)"),
-  parseAbiItem("event Withdraw(address indexed user, uint256 amount)")
-] as const;
-
 export class VaultIndexer {
   private client: ReturnType<typeof createPublicClient>;
   private vaultAddress: Address;
@@ -29,6 +22,25 @@ export class VaultIndexer {
   private eventHandler: EventHandler;
   private isRunning: boolean = false;
   private pollInterval: number = 2000; // 2 秒
+
+  // 事件 ABI
+  private readonly depositEvent = {
+    type: "event" as const,
+    name: "Deposit" as const,
+    inputs: [
+      { type: "address", name: "user", indexed: true },
+      { type: "uint256", name: "amount", indexed: false }
+    ]
+  } as const;
+
+  private readonly withdrawEvent = {
+    type: "event" as const,
+    name: "Withdraw" as const,
+    inputs: [
+      { type: "address", name: "user", indexed: true },
+      { type: "uint256", name: "amount", indexed: false }
+    ]
+  } as const;
 
   constructor() {
     this.vaultAddress = config.external.vaultContractAddress as Address;
@@ -118,7 +130,7 @@ export class VaultIndexer {
     // 获取 Deposit 事件
     const depositLogs = await this.client.getLogs({
       address: this.vaultAddress,
-      event: VAULT_EVENTS[0],
+      event: this.depositEvent,
       fromBlock,
       toBlock
     });
@@ -126,7 +138,7 @@ export class VaultIndexer {
     // 获取 Withdraw 事件
     const withdrawLogs = await this.client.getLogs({
       address: this.vaultAddress,
-      event: VAULT_EVENTS[1],
+      event: this.withdrawEvent,
       fromBlock,
       toBlock
     });
@@ -139,12 +151,12 @@ export class VaultIndexer {
 
     // 处理 Deposit 事件
     for (const log of depositLogs) {
-      await this.processDepositLog(log);
+      await this.processDepositLog(log as Log);
     }
 
     // 处理 Withdraw 事件
     for (const log of withdrawLogs) {
-      await this.processWithdrawLog(log);
+      await this.processWithdrawLog(log as Log);
     }
 
     // 更新游标
@@ -154,17 +166,19 @@ export class VaultIndexer {
   /**
    * 处理 Deposit 日志
    */
-  private async processDepositLog(log: Log<bigint, number, typeof VAULT_EVENTS[0]>): Promise<void> {
-    if (!log.args || log.blockNumber === undefined) {
+  private async processDepositLog(log: Log): Promise<void> {
+    // 使用 any 绕过 viem 复杂的类型推断
+    const args = (log as any).args;
+    if (!args || log.blockNumber === undefined) {
       return;
     }
 
     const event: DepositEvent = {
-      user: log.args.user,
-      amount: log.args.amount,
-      blockNumber: log.blockNumber,
-      transactionHash: log.transactionHash,
-      logIndex: log.logIndex
+      user: args.user as `0x${string}`,
+      amount: args.amount as bigint,
+      blockNumber: log.blockNumber as bigint,
+      transactionHash: log.transactionHash as `0x${string}`,
+      logIndex: (log.logIndex ?? 0) as number
     };
 
     try {
@@ -181,17 +195,19 @@ export class VaultIndexer {
   /**
    * 处理 Withdraw 日志
    */
-  private async processWithdrawLog(log: Log<bigint, number, typeof VAULT_EVENTS[1]>): Promise<void> {
-    if (!log.args || log.blockNumber === undefined) {
+  private async processWithdrawLog(log: Log): Promise<void> {
+    // 使用 any 绕过 viem 复杂的类型推断
+    const args = (log as any).args;
+    if (!args || log.blockNumber === undefined) {
       return;
     }
 
     const event: WithdrawEvent = {
-      user: log.args.user,
-      amount: log.args.amount,
-      blockNumber: log.blockNumber,
-      transactionHash: log.transactionHash,
-      logIndex: log.logIndex
+      user: args.user as `0x${string}`,
+      amount: args.amount as bigint,
+      blockNumber: log.blockNumber as bigint,
+      transactionHash: log.transactionHash as `0x${string}`,
+      logIndex: (log.logIndex ?? 0) as number
     };
 
     try {
