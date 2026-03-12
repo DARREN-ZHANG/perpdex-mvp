@@ -3,7 +3,7 @@
 import { useAuth } from '@/hooks/use-auth'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { WalletButton } from '../wallet/connect-button'
+import { ConnectButton as WalletButton } from '../wallet/connect-button'
 import { useBalance } from '@/hooks/use-balance'
 
 const navItems = [
@@ -44,7 +44,7 @@ export function Header() {
         {isAuthenticated && balance && (
           <div className="text-sm text-gray-400">
             <span className="text-white font-medium">
-              {Number(balance.available).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              {Number(balance.availableBalance).toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </span>{' '}
             USDC
           </div>
