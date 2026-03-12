@@ -3,19 +3,16 @@
 
 import { useState, useCallback } from 'react'
 import { tradingApi } from '@/lib/trading-api'
-import type {
-  OrderFormData,
-  CreateOrderPayload,
-  Order,
-} from '@/types/trading'
+import type { OrderFormData, Order } from '@/types/trading'
 import type { ApiResponse } from '@/types/api'
+import type { CreateOrderResponse } from '@/lib/trading-api'
 
 const DEFAULT_SYMBOL = 'BTC'
 
 export interface UseOrdersReturn {
   isSubmitting: boolean
   lastOrder: Order | null
-  submitOrder: (data: OrderFormData) => Promise<ApiResponse<CreateOrderPayload>>
+  submitOrder: (data: OrderFormData) => Promise<ApiResponse<CreateOrderResponse>>
   resetLastOrder: () => void
 }
 
@@ -24,7 +21,7 @@ export function useOrders(symbol: string = DEFAULT_SYMBOL): UseOrdersReturn {
   const [lastOrder, setLastOrder] = useState<Order | null>(null)
 
   const submitOrder = useCallback(
-    async (formData: OrderFormData): Promise<ApiResponse<CreateOrderPayload>> => {
+    async (formData: OrderFormData): Promise<ApiResponse<CreateOrderResponse>> => {
       setIsSubmitting(true)
 
       try {

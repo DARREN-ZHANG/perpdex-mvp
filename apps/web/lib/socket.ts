@@ -1,5 +1,5 @@
 // apps/web/lib/socket.ts
-import { io, Socket } from 'socket.io-client'
+import { io, type Socket } from 'socket.io-client'
 import { WS_CONFIG } from '@/config/constants'
 import type {
   MarketData,
@@ -7,8 +7,6 @@ import type {
   PositionUpdate,
   BalanceUpdate,
   TradeNotification,
-  SocketEventMap,
-  SubscribeOptions,
 } from '@/types/socket'
 
 class SocketClient {

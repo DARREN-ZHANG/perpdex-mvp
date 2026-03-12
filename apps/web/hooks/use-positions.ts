@@ -74,7 +74,7 @@ export function getRiskLevelText(riskLevel: Position['riskLevel']): string {
 async function fetchPositions(): Promise<Position[]> {
   const response = await api.get<Position[]>('/api/user/positions')
   if (!response.success) {
-    throw new Error(response.error || '获取仓位列表失败')
+    throw new Error(response.error?.message || '获取仓位列表失败')
   }
   return response.data || []
 }
@@ -83,7 +83,7 @@ async function fetchPositions(): Promise<Position[]> {
 async function closePosition(positionId: string): Promise<void> {
   const response = await api.post(`/api/trade/positions/${positionId}/close`)
   if (!response.success) {
-    throw new Error(response.error || '平仓失败')
+    throw new Error(response.error?.message || '平仓失败')
   }
 }
 
