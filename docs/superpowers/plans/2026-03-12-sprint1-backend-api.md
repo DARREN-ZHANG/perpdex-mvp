@@ -57,6 +57,11 @@ apps/api/
 **Files:**
 - Modify: `apps/api/package.json`
 
+> **依赖选型依据：** [ARCHITECTURE.md](../../ARCHITECTURE.md)
+> - 测试：Vitest + Supertest + @vitest/coverage-v8
+> - 日志：Pino
+> - 验证：Zod
+
 - [ ] **Step 1: Add dependencies to package.json**
 
 ```json
@@ -77,12 +82,13 @@ apps/api/
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "@types/supertest": "^6.0.2",
+    "@vitest/coverage-v8": "^3.1.1",
     "prisma": "^6.5.0",
+    "supertest": "^7.0.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.2",
-    "vitest": "^3.1.1",
-    "supertest": "^7.0.0",
-    "@types/supertest": "^6.0.2"
+    "vitest": "^3.1.1"
   }
 }
 ```
@@ -1027,20 +1033,25 @@ git commit -m "feat(api): add auth service with SIWE flow"
 - Create: `apps/api/src/routes/auth.ts`
 - Create: `tests/integration/auth.test.ts`
 
-- [ ] **Step 1: Write the failing test**
+> **测试选型：** 集成测试使用 Supertest + Vitest（ARCHITECTURE.md §5.3）
+
+- [ ] **Step 1: Write the failing test (使用 Supertest)**
 
 ```typescript
 // tests/integration/auth.test.ts
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import request from "supertest";
 import { buildServer } from "../../src/app";
 import type { FastifyInstance } from "fastify";
 
-describe("Auth Routes", () => {
+describe("Auth Routes (Integration)", () => {
   let app: FastifyInstance;
+  let server: ReturnType<FastifyInstance["server"]>;
 
   beforeAll(async () => {
     app = await buildServer();
     await app.ready();
+    server = app.server;
   });
 
   afterAll(async () => {
@@ -1049,55 +1060,64 @@ describe("Auth Routes", () => {
 
   describe("GET /api/auth/challenge", () => {
     it("should return challenge for valid wallet address", async () => {
-      const response = await app.inject({
-        method: "GET",
-        url: "/api/auth/challenge",
-        query: {
+      const response = await request(server)
+        .get("/api/auth/challenge")
+        .query({
           walletAddress: "0x1234567890123456789012345678901234567890",
           chainId: "421614"
-        }
-      });
+        });
 
-      expect(response.statusCode).toBe(200);
-      const body = response.json();
-      expect(body.data).toMatchObject({
+      expect(response.status).toBe(200);
+      expect(response.body.data).toMatchObject({
         walletAddress: "0x1234567890123456789012345678901234567890",
         chainId: 421614
       });
-      expect(body.data.nonce).toBeDefined();
-      expect(body.data.message).toContain("0x1234567890123456789012345678901234567890");
+      expect(response.body.data.nonce).toBeDefined();
+      expect(response.body.data.message).toContain("0x1234567890123456789012345678901234567890");
     });
 
     it("should reject invalid wallet address", async () => {
-      const response = await app.inject({
-        method: "GET",
-        url: "/api/auth/challenge",
-        query: {
+      const response = await request(server)
+        .get("/api/auth/challenge")
+        .query({
           walletAddress: "invalid-address"
-        }
-      });
+        });
 
-      expect(response.statusCode).toBe(400);
-      const body = response.json();
-      expect(body.error.code).toBe("VALIDATION_ERROR");
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe("VALIDATION_ERROR");
     });
   });
 
   describe("POST /api/auth/verify", () => {
+    // ARCHITECTURE.md §10.3 必须测试：SIWE 登录签名验证
     it("should reject invalid signature", async () => {
-      const response = await app.inject({
-        method: "POST",
-        url: "/api/auth/verify",
-        payload: {
+      const response = await request(server)
+        .post("/api/auth/verify")
+        .send({
           walletAddress: "0x1234567890123456789012345678901234567890",
           chainId: 421614,
           nonce: "test-nonce",
           message: "test message",
           signature: "0x1234"
-        }
-      });
+        });
 
-      expect(response.statusCode).toBe(400);
+      expect(response.status).toBe(400);
+    });
+
+    it("should reject expired challenge", async () => {
+      // 这个测试需要 mock 时间或数据库状态
+      // Sprint 1 可以先跳过，在后续迭代中完善
+    });
+  });
+
+  describe("GET /api/auth/session", () => {
+    it("should return unauthenticated without token", async () => {
+      const response = await request(server)
+        .get("/api/auth/session");
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.authenticated).toBe(false);
+      expect(response.body.data.user).toBeNull();
     });
   });
 });
@@ -1536,43 +1556,64 @@ git commit -m "feat(api): update entry point with Socket.IO and graceful shutdow
 
 ## Chunk 6: Testing and Verification
 
-### Task 6.1: Create Test Setup
+> **测试选型依据：** [ARCHITECTURE.md](../../ARCHITECTURE.md) §5.3 测试技术栈
+> - 单元测试：Vitest（后端逻辑、工具函数）
+> - 集成测试：Supertest + Vitest（API 接口、数据库操作）
+> - 覆盖率：Vitest v8
+> - **MVP 阶段不实现 E2E 测试**
+
+### Task 6.1: Create Vitest Configuration
 
 **Files:**
-- Create: `apps/api/tests/setup.ts`
+- Create: `apps/api/vitest.config.ts`
 
-- [ ] **Step 1: Write tests/setup.ts**
+- [ ] **Step 1: Write vitest.config.ts (使用 Vitest v8 覆盖率)**
 
 ```typescript
-// tests/setup.ts
-import { beforeAll, afterAll, afterEach } from "vitest";
+// apps/api/vitest.config.ts
+import { defineConfig } from "vitest/config";
 
-// Set test environment
-process.env.NODE_ENV = "test";
-process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/perpdex_test?schema=public";
-process.env.JWT_SECRET = "test-secret-key";
-process.env.LOG_LEVEL = "error";
-
-beforeAll(async () => {
-  // Setup test database, mock services, etc.
-});
-
-afterAll(async () => {
-  // Cleanup
-});
-
-afterEach(async () => {
-  // Reset state between tests
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: "node",
+    include: ["tests/**/*.test.ts"],
+    exclude: ["node_modules", "dist"],
+    coverage: {
+      provider: "v8", // ARCHITECTURE.md 指定
+      reporter: ["text", "json", "html"],
+      reportsDirectory: "./coverage",
+      include: ["src/**/*.ts"],
+      exclude: [
+        "src/index.ts",
+        "src/types/**"
+      ],
+      thresholds: {
+        // ARCHITECTURE.md §10.3 覆盖率要求
+        lines: 80,
+        functions: 80,
+        branches: 70,
+        statements: 80
+      }
+    },
+    // 测试环境变量
+    env: {
+      NODE_ENV: "test",
+      DATABASE_URL: "postgresql://test:test@localhost:5432/perpdex_test?schema=public",
+      JWT_SECRET: "test-secret-key",
+      LOG_LEVEL: "error"
+    }
+  }
 });
 ```
 
-- [ ] **Step 2: Update package.json test script**
+- [ ] **Step 2: Update package.json test scripts**
 
-Add to `apps/api/package.json`:
+Update `apps/api/package.json` scripts:
 ```json
 {
   "scripts": {
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "test:watch": "vitest watch",
     "test:coverage": "vitest run --coverage"
   }
@@ -1582,27 +1623,46 @@ Add to `apps/api/package.json`:
 - [ ] **Step 3: Commit**
 
 ```bash
-git add apps/api/tests/setup.ts apps/api/package.json
-git commit -m "test(api): add test setup configuration"
+git add apps/api/vitest.config.ts apps/api/package.json
+git commit -m "test(api): add Vitest config with v8 coverage per ARCHITECTURE.md"
 ```
 
 ---
 
-### Task 6.2: Run All Tests
+### Task 6.2: Run Tests and Verify Coverage
 
-- [ ] **Step 1: Run all tests**
+> **覆盖率要求（ARCHITECTURE.md §10.3）：**
+> - 单元测试：80%+
+> - 集成测试：70%+
+> - **Sprint 1 重点测试：** SIWE 登录签名验证
 
-Run: `cd /Users/xlzj/Desktop/Projects/perp-dex-mvp/.worktrees/backend-api/apps/api && pnpm test`
+- [ ] **Step 1: Run unit tests**
 
-Expected: All tests pass (or skip if no DB connection)
+Run: `cd /Users/xlzj/Desktop/Projects/perp-dex-mvp/.worktrees/backend-api/apps/api && pnpm vitest run tests/unit`
 
-- [ ] **Step 2: Run linter**
+Expected: All unit tests pass
+
+- [ ] **Step 2: Run integration tests (需要数据库连接)**
+
+Run: `cd /Users/xlzj/Desktop/Projects/perp-dex-mvp/.worktrees/backend-api/apps/api && pnpm vitest run tests/integration`
+
+Expected: All integration tests pass (或 skip 如果无测试数据库)
+
+- [ ] **Step 3: Run all tests with coverage**
+
+Run: `cd /Users/xlzj/Desktop/Projects/perp-dex-mvp/.worktrees/backend-api/apps/api && pnpm test:coverage`
+
+Expected:
+- Coverage >= 80% for lines/functions
+- All tests pass
+
+- [ ] **Step 4: Run linter**
 
 Run: `cd /Users/xlzj/Desktop/Projects/perp-dex-mvp/.worktrees/backend-api && pnpm lint`
 
 Expected: No lint errors
 
-- [ ] **Step 3: Run type check**
+- [ ] **Step 5: Run type check**
 
 Run: `cd /Users/xlzj/Desktop/Projects/perp-dex-mvp/.worktrees/backend-api/apps/api && pnpm typecheck`
 
