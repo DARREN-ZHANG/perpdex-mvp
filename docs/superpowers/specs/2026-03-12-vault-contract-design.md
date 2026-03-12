@@ -114,7 +114,7 @@ receive() external payable {
 
 | Variable | Type | Visibility | Description |
 |----------|------|------------|-------------|
-| `USDC` | `IER20` | `public immutable` | USDC token contract |
+| `USDC` | `IERC20` | `public immutable` | USDC token contract |
 | `_balances` | `mapping(address => uint256)` | `private` | User balances |
 | `_totalAssets` | `uint256` | `private` | Total assets tracked |
 
