@@ -55,7 +55,7 @@ export function BalanceSummary() {
     positions?.reduce((sum, pos) => sum + parseFloat(pos.unrealizedPnl || '0'), 0) || 0
 
   return (
-    <div className="grid grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4">
       <SummaryCard label="总资产价值" value={totalValue} />
       <SummaryCard
         label="可用余额"
