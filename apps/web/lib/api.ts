@@ -14,6 +14,8 @@ import type {
   PaginatedResponse,
 } from '@/types/api'
 
+const AUTH_TOKEN_CHANGE_EVENT = 'perpdex:auth-token-change'
+
 class ApiClient {
   private baseUrl: string
   private timeout: number
@@ -35,6 +37,7 @@ class ApiClient {
   setAccessToken(token: string): void {
     if (typeof window === 'undefined') return
     localStorage.setItem('accessToken', token)
+    window.dispatchEvent(new CustomEvent(AUTH_TOKEN_CHANGE_EVENT))
   }
 
   // 清除 token
@@ -42,6 +45,7 @@ class ApiClient {
     if (typeof window === 'undefined') return
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
+    window.dispatchEvent(new CustomEvent(AUTH_TOKEN_CHANGE_EVENT))
   }
 
   // 带超时的 fetch
@@ -141,7 +145,11 @@ class ApiClient {
         }
 
         // 确保成功响应包含 success 字段
-        const { success: _ignoredSuccess, ...responseData } = data
+        const responseData = {
+          ...data,
+          success: undefined,
+        }
+        delete responseData.success
 
         return {
           ...responseData,
@@ -279,6 +287,11 @@ class ApiClient {
     )
   }
 
+  // 获取单条交易状态
+  async getTransaction(transactionId: string): Promise<ApiResponse<Transaction>> {
+    return this.get<Transaction>(`/api/user/transactions/${transactionId}`)
+  }
+
   // 获取订单历史
   async getOrders(
     query?: { cursor?: string; limit?: number }
@@ -301,6 +314,7 @@ class ApiClient {
 
 // 导出单例实例
 export const api = new ApiClient()
+export { AUTH_TOKEN_CHANGE_EVENT }
 
 // 导出类型
 export type { ApiResponse, ApiError, AuthChallenge, AuthTokens, User, AccountBalance, OrderHistoryItem, Transaction, WithdrawPayload, PaginatedResponse }

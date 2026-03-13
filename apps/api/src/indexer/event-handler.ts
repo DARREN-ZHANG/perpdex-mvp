@@ -135,7 +135,7 @@ export class EventHandler {
     const idempotencyKey = createOnchainEventIdempotencyKey({
       txHash: event.transactionHash,
       logIndex: event.logIndex,
-      eventName: "WITHdraw"
+      eventName: "WITHDRAW"
     });
 
     logger.info({
@@ -202,7 +202,17 @@ export class EventHandler {
       });
 
       // 查找并更新对应的提现请求
-      const pendingWithdraw = await tx.transaction.findFirst({
+      const pendingWithdraw =
+        await tx.transaction.findFirst({
+          where: {
+            userId: user.id,
+            type: "WITHDRAW",
+            status: "PENDING",
+            txHash: event.transactionHash
+          },
+          orderBy: { createdAt: "desc" }
+        }) ??
+        await tx.transaction.findFirst({
         where: {
           userId: user.id,
           type: "WITHDRAW",
@@ -216,6 +226,8 @@ export class EventHandler {
         await tx.transaction.update({
           where: { id: pendingWithdraw.id },
           data: {
+            eventName: "WITHDRAW",
+            idempotencyKey,
             txHash: event.transactionHash,
             logIndex: event.logIndex,
             blockNumber: event.blockNumber,

@@ -3,7 +3,8 @@
 
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import type { Transaction, TransactionType } from '@/types/api'
+import { useAuth } from './use-auth'
+import type { TransactionType } from '@/types/api'
 
 const TRANSACTIONS_QUERY_KEY = 'transactions'
 
@@ -14,6 +15,7 @@ interface UseTransactionsOptions {
 
 export function useTransactions(options: UseTransactionsOptions = {}) {
   const { type, limit = 20 } = options
+  const { isAuthenticated } = useAuth()
 
   const {
     data,
@@ -39,6 +41,7 @@ export function useTransactions(options: UseTransactionsOptions = {}) {
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,
     staleTime: 30000,
+    enabled: isAuthenticated,
   })
 
   // 扁平化交易列表

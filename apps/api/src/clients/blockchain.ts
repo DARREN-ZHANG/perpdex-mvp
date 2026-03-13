@@ -9,6 +9,7 @@ import {
   http,
   type Address,
   type Hex,
+  type Hash,
   type Chain
 } from "viem";
 import { arbitrumSepolia, foundry } from "viem/chains";
@@ -72,7 +73,8 @@ export class BlockchainClient {
     });
 
     // Initialize wallet client if private key is available
-    const privateKey = process.env.HEDGE_PRIVATE_KEY;
+    const privateKey =
+      process.env.HEDGE_PRIVATE_KEY ?? process.env.HYPERLIQUID_PRIVATE_KEY;
     if (privateKey) {
       const account = privateKeyToAccount(privateKey as Hex);
       this.walletClient = createWalletClient({
@@ -80,10 +82,16 @@ export class BlockchainClient {
         transport: http(config.external.rpcUrl),
         account
       });
-      logger.info({ msg: "Wallet client initialized" });
+      logger.info({
+        msg: "Wallet client initialized",
+        source: process.env.HEDGE_PRIVATE_KEY
+          ? "HEDGE_PRIVATE_KEY"
+          : "HYPERLIQUID_PRIVATE_KEY"
+      });
     } else {
       logger.warn({
-        msg: "HEDGE_PRIVATE_KEY not set, onchain operations disabled"
+        msg: "No onchain private key set, onchain operations disabled",
+        expectedEnvVars: ["HEDGE_PRIVATE_KEY", "HYPERLIQUID_PRIVATE_KEY"]
       });
     }
 
@@ -112,7 +120,9 @@ export class BlockchainClient {
    */
   async executeWithdraw(userAddress: Address, amount: bigint): Promise<string> {
     if (!this.walletClient) {
-      throw new Error("Wallet client not initialized. Set HEDGE_PRIVATE_KEY");
+      throw new Error(
+        "Wallet client not initialized. Set HEDGE_PRIVATE_KEY or HYPERLIQUID_PRIVATE_KEY"
+      );
     }
 
     const { request } = await this.publicClient.simulateContract({
@@ -140,7 +150,7 @@ export class BlockchainClient {
    */
   async waitForTransaction(txHash: string): Promise<"success" | "reverted"> {
     const receipt = await this.publicClient.waitForTransactionReceipt({
-      hash: txHash as Address
+      hash: txHash as Hash
     });
 
     return receipt.status === "success" ? "success" : "reverted";

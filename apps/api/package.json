@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "cross-env DATABASE_URL=postgresql://perpdex:perpdex_password@localhost:5432/perpdex?schema=public REDIS_URL=redis://localhost:6379 JWT_SECRET=dev-secret-change-in-production CHAIN_ID=31337 RPC_URL=http://localhost:8545 VAULT_CONTRACT_ADDRESS=0xe7f1725e7734ce288f8367e1bb143e90bb3f0512 HYPERLIQUID_PRIVATE_KEY=0x25c86c1b938d513e89579f42cb1c527f3c179f6b1b9834a03ab880858bc5f10a tsx watch src/index.ts",
+    "dev": "cross-env DATABASE_URL=postgresql://perpdex:perpdex_password@localhost:5432/perpdex?schema=public REDIS_URL=redis://localhost:6379 JWT_SECRET=dev-secret-change-in-production CHAIN_ID=31337 RPC_URL=http://localhost:8545 VAULT_CONTRACT_ADDRESS=0xe7f1725e7734ce288f8367e1bb143e90bb3f0512 HEDGE_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 HYPERLIQUID_PRIVATE_KEY=0x25c86c1b938d513e89579f42cb1c527f3c179f6b1b9834a03ab880858bc5f10a tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "vitest run",

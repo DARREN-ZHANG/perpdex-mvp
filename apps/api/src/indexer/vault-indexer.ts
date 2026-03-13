@@ -138,8 +138,9 @@ export class VaultIndexer {
     const fromBlock = await this.cursorManager.getCursor();
     const latestBlock = await this.client.getBlockNumber();
 
-    // 没有新区块
-    if (fromBlock >= latestBlock) {
+    // cursor 表示“下一个要处理的区块”，因此当 fromBlock === latestBlock 时
+    // 仍然需要处理该最新区块，只有 fromBlock 已经超过最新区块时才能跳过。
+    if (fromBlock > latestBlock) {
       return;
     }
 
