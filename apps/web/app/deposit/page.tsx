@@ -55,7 +55,7 @@ export default function DepositPage() {
   // 加载状态
   if (authLoading) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
+      <div className="p-4 lg:p-6 max-w-2xl mx-auto">
         <div className="bg-white rounded-lg shadow-panel p-8 animate-pulse">
           <div className="h-8 bg-pro-gray-200 rounded w-32 mb-6" />
           <div className="h-12 bg-pro-gray-200 rounded mb-4" />
@@ -68,7 +68,7 @@ export default function DepositPage() {
   // 未登录状态
   if (!isAuthenticated) {
     return (
-      <div className="p-6 max-w-2xl mx-auto">
+      <div className="p-4 lg:p-6 max-w-2xl mx-auto">
         <div className="bg-white rounded-lg shadow-panel p-12 text-center">
           <p className="text-pro-gray-500 mb-4">请先连接钱包并登录以进行充值</p>
           <Link
@@ -85,25 +85,25 @@ export default function DepositPage() {
   const isLoading = isApproving || isDepositing || step === 'checking-allowance'
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-4 lg:p-6 max-w-2xl mx-auto">
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-4 lg:mb-6">
         <div className="flex items-center gap-2 mb-2">
           <Link
             href="/assets"
-            className="text-pro-gray-400 hover:text-pro-gray-600 transition-colors"
+            className="text-sm text-pro-gray-400 hover:text-pro-gray-600 transition-colors"
           >
             ← 返回资产
           </Link>
         </div>
-        <h1 className="text-2xl font-bold text-pro-gray-800">充值 USDC</h1>
+        <h1 className="text-xl lg:text-2xl font-bold text-pro-gray-800">充值 USDC</h1>
         <p className="text-sm text-pro-gray-500 mt-1">
           将 USDC 充值到 Vault 合约以开始交易
         </p>
       </div>
 
       {/* Main Card */}
-      <div className="bg-white rounded-lg shadow-panel p-6">
+      <div className="bg-white rounded-lg shadow-panel p-4 lg:p-6">
         {/* Balance Info */}
         <div className="mb-6 p-4 bg-pro-gray-50 rounded-lg">
           <div className="flex justify-between items-center">
@@ -143,13 +143,13 @@ export default function DepositPage() {
           </div>
 
           {/* Quick Amount Buttons */}
-          <div className="flex gap-2 mt-3">
+          <div className="grid grid-cols-2 sm:flex gap-2 mt-3">
             {quickAmounts.map((amt) => (
               <button
                 key={amt}
                 onClick={() => setAmount(amt)}
                 disabled={isLoading}
-                className="flex-1 px-3 py-2 text-sm border border-pro-gray-200 rounded-md hover:border-pro-accent-cyan hover:text-pro-accent-cyan transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-2 text-sm border border-pro-gray-200 rounded-md hover:border-pro-accent-cyan hover:text-pro-accent-cyan transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {amt} USDC
               </button>
@@ -157,7 +157,7 @@ export default function DepositPage() {
             <button
               onClick={() => setAmount(usdcBalance)}
               disabled={isLoading}
-              className="px-3 py-2 text-sm border border-pro-gray-200 rounded-md hover:border-pro-accent-cyan hover:text-pro-accent-cyan transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="col-span-2 sm:col-span-1 px-3 py-2 text-sm border border-pro-gray-200 rounded-md hover:border-pro-accent-cyan hover:text-pro-accent-cyan transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               全部
             </button>
