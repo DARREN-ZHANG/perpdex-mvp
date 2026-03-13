@@ -1,0 +1,236 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountAsset {
+  USDC
+}
+
+enum MarketSymbol {
+  BTC
+}
+
+enum OrderSide {
+  LONG
+  SHORT
+}
+
+enum OrderType {
+  MARKET
+}
+
+enum OrderStatus {
+  PENDING
+  FILLED
+  FAILED
+  CANCELED
+}
+
+enum PositionStatus {
+  OPEN
+  CLOSED
+  LIQUIDATED
+}
+
+enum RiskLevel {
+  SAFE
+  WARNING
+  DANGER
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAW
+  MARGIN_LOCK
+  MARGIN_RELEASE
+  REALIZED_PNL
+  FEE
+  LIQUIDATION
+}
+
+enum TransactionStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  REVERTED
+}
+
+enum ChainEventName {
+  DEPOSIT
+  WITHDRAW
+}
+
+enum HedgeTrigger {
+  OPEN
+  CLOSE
+  MARGIN_ADJUST
+  LIQUIDATION
+  MANUAL
+}
+
+enum HedgeStatus {
+  PENDING
+  SUBMITTED
+  FILLED
+  FAILED
+}
+
+model User {
+  id             String         @id @default(cuid())
+  walletAddress  String         @unique @map("wallet_address") @db.VarChar(42)
+  nonce          String?        @db.VarChar(191)
+  nonceExpiresAt DateTime?      @map("nonce_expires_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  lastLoginAt    DateTime?      @map("last_login_at")
+  accounts       Account[]
+  orders         Order[]
+  positions      Position[]
+  transactions   Transaction[]
+  hedgeOrders    HedgeOrder[]
+
+  @@map("users")
+}
+
+model Account {
+  id               String         @id @default(cuid())
+  userId           String         @map("user_id")
+  asset            AccountAsset   @default(USDC)
+  availableBalance BigInt         @default(0) @map("available_balance")
+  lockedBalance    BigInt         @default(0) @map("locked_balance")
+  equity           BigInt         @default(0)
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions     Transaction[]
+
+  @@unique([userId, asset])
+  @@map("accounts")
+}
+
+model Order {
+  id             String      @id @default(cuid())
+  userId         String      @map("user_id")
+  positionId     String?     @map("position_id")
+  clientOrderId  String?     @unique @map("client_order_id") @db.VarChar(64)
+  symbol         MarketSymbol
+  side           OrderSide
+  type           OrderType   @default(MARKET)
+  size           Decimal     @db.Decimal(36, 18)
+  requestedPrice Decimal?    @map("requested_price") @db.Decimal(36, 18)
+  executedPrice  Decimal?    @map("executed_price") @db.Decimal(36, 18)
+  margin         BigInt
+  leverage       Int
+  status         OrderStatus @default(PENDING)
+  failureCode    String?     @map("failure_code") @db.VarChar(64)
+  failureMessage String?     @map("failure_message") @db.VarChar(255)
+  metadata       Json?
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  filledAt       DateTime?   @map("filled_at")
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  position       Position?   @relation(fields: [positionId], references: [id], onDelete: SetNull)
+  hedgeOrders    HedgeOrder[]
+
+  @@index([userId, createdAt])
+  @@index([positionId])
+  @@map("orders")
+}
+
+model Position {
+  id               String         @id @default(cuid())
+  userId           String         @map("user_id")
+  symbol           MarketSymbol
+  side             OrderSide
+  positionSize     Decimal        @map("position_size") @db.Decimal(36, 18)
+  entryPrice       Decimal        @map("entry_price") @db.Decimal(36, 18)
+  markPrice        Decimal        @map("mark_price") @db.Decimal(36, 18)
+  unrealizedPnl    Decimal        @map("unrealized_pnl") @db.Decimal(36, 18)
+  liquidationPrice Decimal        @map("liquidation_price") @db.Decimal(36, 18)
+  margin           BigInt
+  status           PositionStatus @default(OPEN)
+  riskLevel        RiskLevel      @default(SAFE) @map("risk_level")
+  metadata         Json?
+  openedAt         DateTime       @default(now()) @map("opened_at")
+  closedAt         DateTime?      @map("closed_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  updatedAt        DateTime       @updatedAt @map("updated_at")
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orders           Order[]
+  hedgeOrders      HedgeOrder[]
+
+  @@index([userId, status])
+  @@index([userId, symbol, updatedAt])
+  @@map("positions")
+}
+
+model Transaction {
+  id             String            @id @default(cuid())
+  userId         String            @map("user_id")
+  accountId      String?           @map("account_id")
+  type           TransactionType
+  eventName      ChainEventName?   @map("event_name")
+  txHash         String?           @map("tx_hash") @db.VarChar(66)
+  logIndex       Int?              @map("log_index")
+  blockNumber    BigInt?           @map("block_number")
+  amount         BigInt
+  status         TransactionStatus @default(PENDING)
+  idempotencyKey String?           @unique @map("idempotency_key") @db.VarChar(191)
+  metadata       Json?
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  confirmedAt    DateTime?         @map("confirmed_at")
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account        Account?          @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@unique([txHash, logIndex, eventName])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+  @@map("transactions")
+}
+
+model HedgeOrder {
+  id              String      @id @default(cuid())
+  taskId          String      @unique @map("task_id") @db.VarChar(64)
+  userId          String      @map("user_id")
+  orderId         String?     @map("order_id")
+  positionId      String?     @map("position_id")
+  externalOrderId String?     @map("external_order_id") @db.VarChar(128)
+  symbol          MarketSymbol
+  side            OrderSide
+  size            Decimal     @db.Decimal(36, 18)
+  referencePrice  Decimal?    @map("reference_price") @db.Decimal(36, 18)
+  trigger         HedgeTrigger
+  priority        Int         @default(5)
+  status          HedgeStatus @default(PENDING)
+  retryCount      Int         @default(0) @map("retry_count")
+  maxRetryCount   Int         @default(3) @map("max_retry_count")
+  errorMessage    String?     @map("error_message") @db.VarChar(255)
+  payload         Json
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  submittedAt     DateTime?   @map("submitted_at")
+  filledAt        DateTime?   @map("filled_at")
+  failedAt        DateTime?   @map("failed_at")
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order           Order?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  position        Position?   @relation(fields: [positionId], references: [id], onDelete: SetNull)
+
+  @@index([status, priority, createdAt])
+  @@index([userId, updatedAt])
+  @@map("hedge_orders")
+}
+
+model BlockCursor {
+  id        String   @id @default(cuid())
+  chainId   Int      @unique @map("chain_id")
+  cursor    BigInt   @db.BigInt
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("block_cursors")
+}
