@@ -55,12 +55,12 @@ export default function AssetsPage() {
   // 加载状态
   if (authLoading) {
     return (
-      <div className="p-6 max-w-6xl mx-auto">
-        <div className="mb-6">
+      <div className="p-4 lg:p-6 max-w-7xl mx-auto">
+        <div className="mb-4 lg:mb-6">
           <div className="h-8 bg-pro-gray-200 rounded w-32 mb-2 animate-pulse" />
           <div className="h-4 bg-pro-gray-200 rounded w-48 animate-pulse" />
         </div>
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="bg-white rounded-lg p-5 h-24 animate-pulse" />
           ))}
@@ -73,9 +73,9 @@ export default function AssetsPage() {
   // 未登录状态
   if (!isAuthenticated) {
     return (
-      <div className="p-6 max-w-6xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-pro-gray-800 mb-2">资产概览</h1>
+      <div className="p-4 lg:p-6 max-w-7xl mx-auto">
+        <div className="mb-4 lg:mb-6">
+          <h1 className="text-xl lg:text-2xl font-bold text-pro-gray-800 mb-1 lg:mb-2">资产概览</h1>
           <p className="text-sm text-pro-gray-500">查看您的账户余额和资金状况</p>
         </div>
 
@@ -88,10 +88,10 @@ export default function AssetsPage() {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-4 lg:p-6 max-w-7xl mx-auto">
       {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-pro-gray-800 mb-2">资产概览</h1>
+      <div className="mb-4 lg:mb-6">
+        <h1 className="text-xl lg:text-2xl font-bold text-pro-gray-800 mb-1 lg:mb-2">资产概览</h1>
         <p className="text-sm text-pro-gray-500">
           查看您的账户余额和资金状况
         </p>
