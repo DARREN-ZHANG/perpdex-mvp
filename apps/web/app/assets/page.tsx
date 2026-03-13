@@ -190,9 +190,12 @@ export default function AssetsPage() {
                   </td>
                   <td className="px-6 py-5 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button className="px-3 py-1.5 bg-pro-accent-green text-white text-xs font-medium rounded hover:bg-pro-accent-green/90 transition-colors">
+                      <Link
+                        href="/deposit"
+                        className="px-3 py-1.5 bg-pro-accent-green text-white text-xs font-medium rounded hover:bg-pro-accent-green/90 transition-colors"
+                      >
                         充值
-                      </button>
+                      </Link>
                       <button className="px-3 py-1.5 border border-pro-gray-200 text-pro-gray-600 text-xs font-medium rounded hover:border-pro-gray-300 transition-colors">
                         提现
                       </button>
