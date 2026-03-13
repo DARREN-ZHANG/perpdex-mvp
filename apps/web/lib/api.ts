@@ -145,11 +145,8 @@ class ApiClient {
         }
 
         // 确保成功响应包含 success 字段
-        const responseData = {
-          ...data,
-          success: undefined,
-        }
-        delete responseData.success
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { success, ...responseData } = data
 
         return {
           ...responseData,

@@ -69,12 +69,12 @@ export default function AssetsPage() {
   // 加载状态
   if (authLoading) {
     return (
-      <div className="p-6 max-w-6xl mx-auto">
-        <div className="mb-6">
+      <div className="p-4 lg:p-6 max-w-7xl mx-auto">
+        <div className="mb-4 lg:mb-6">
           <div className="h-8 bg-pro-gray-200 rounded w-32 mb-2 animate-pulse" />
           <div className="h-4 bg-pro-gray-200 rounded w-48 animate-pulse" />
         </div>
-        <div className="grid grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-6">
           {[...Array(4)].map((_, i) => (
             <div key={i} className="bg-white rounded-lg p-5 h-24 animate-pulse" />
           ))}
@@ -87,9 +87,9 @@ export default function AssetsPage() {
   // 未登录状态
   if (!isAuthenticated) {
     return (
-      <div className="p-6 max-w-6xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-pro-gray-800 mb-2">资产概览</h1>
+      <div className="p-4 lg:p-6 max-w-7xl mx-auto">
+        <div className="mb-4 lg:mb-6">
+          <h1 className="text-xl lg:text-2xl font-bold text-pro-gray-800 mb-1 lg:mb-2">资产概览</h1>
           <p className="text-sm text-pro-gray-500">查看您的账户余额和资金状况</p>
         </div>
 
@@ -102,10 +102,10 @@ export default function AssetsPage() {
   }
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
+    <div className="p-4 lg:p-6 max-w-7xl mx-auto">
       {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-pro-gray-800 mb-2">资产概览</h1>
+      <div className="mb-4 lg:mb-6">
+        <h1 className="text-xl lg:text-2xl font-bold text-pro-gray-800 mb-1 lg:mb-2">资产概览</h1>
         <p className="text-sm text-pro-gray-500">
           查看您的账户余额和资金状况
         </p>
@@ -140,8 +140,8 @@ export default function AssetsPage() {
           </div>
         </div>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
+        {/* Desktop: Table View */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="bg-pro-gray-50 text-xs text-pro-gray-500 uppercase tracking-wider">
@@ -248,6 +248,70 @@ export default function AssetsPage() {
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile: Card View */}
+        <div className="md:hidden space-y-3">
+          {assetData.map((asset) => (
+            <div
+              key={asset.symbol}
+              className="bg-white rounded-lg shadow-panel p-4"
+            >
+              {/* 头部：图标和名称 */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
+                    style={{ backgroundColor: asset.color }}
+                  >
+                    {asset.letter}
+                  </div>
+                  <div>
+                    <div className="font-semibold text-pro-gray-800">{asset.symbol}</div>
+                    <div className="text-xs text-pro-gray-500">{asset.name}</div>
+                  </div>
+                </div>
+                {/* 操作按钮 */}
+                <div className="flex items-center gap-2">
+                  {asset.symbol === 'USDC' && (
+                    <Link
+                      href="/deposit"
+                      className="px-3 py-1.5 bg-pro-accent-green text-white text-xs font-medium rounded hover:bg-pro-accent-green/90 transition-colors"
+                    >
+                      充值
+                    </Link>
+                  )}
+                  <button className="px-3 py-1.5 border border-pro-gray-200 text-pro-gray-600 text-xs font-medium rounded hover:border-pro-gray-300 transition-colors">
+                    提现
+                  </button>
+                </div>
+              </div>
+
+              {/* 余额信息 */}
+              <div className="grid grid-cols-3 gap-4 pt-3 border-t border-pro-gray-100">
+                <div>
+                  <div className="text-xs text-pro-gray-500 mb-0.5">总余额</div>
+                  <div className="text-sm font-semibold font-mono text-pro-gray-800">
+                    {asset.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-pro-gray-500 mb-0.5">可用</div>
+                  <div className="text-sm font-semibold font-mono text-pro-gray-800">
+                    {asset.available.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs text-pro-gray-500 mb-0.5">锁定</div>
+                  <div className="text-sm font-semibold font-mono text-pro-gray-800">
+                    {asset.locked > 0
+                      ? asset.locked.toLocaleString('en-US', { minimumFractionDigits: 2 })
+                      : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

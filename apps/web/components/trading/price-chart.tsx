@@ -72,12 +72,12 @@ export function PriceChart({ priceData }: PriceChartProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-4 px-4 py-2 border-b border-pro-gray-100">
+      <div className="flex items-center gap-2 lg:gap-4 px-3 lg:px-4 py-2 border-b border-pro-gray-100 overflow-x-auto">
         {TIMEFRAMES.map((tf) => (
           <button
             key={tf.value}
             onClick={() => setTimeframe(tf.value)}
-            className={`text-sm transition-colors ${
+            className={`text-xs lg:text-sm transition-colors whitespace-nowrap ${
               timeframe === tf.value
                 ? 'text-pro-accent-cyan font-medium'
                 : 'text-pro-gray-500 hover:text-pro-gray-700'
@@ -86,20 +86,20 @@ export function PriceChart({ priceData }: PriceChartProps) {
             {tf.label}
           </button>
         ))}
-        <span className="ml-auto text-pro-accent-cyan font-medium text-sm">
+        <span className="ml-auto text-pro-accent-cyan font-medium text-xs lg:text-sm whitespace-nowrap">
           BTC/USDT
         </span>
       </div>
 
       <div className="flex-1 relative">
         {priceData && priceData.price > 0 && (
-          <div className="absolute top-4 left-4 z-10 bg-white/95 rounded-lg shadow-float p-3">
-            <div className="text-sm text-pro-gray-500 mb-1">BTC / USDT</div>
-            <div className="text-2xl font-bold font-mono text-pro-gray-800">
+          <div className="absolute top-2 left-2 lg:top-4 lg:left-4 z-10 bg-white/95 rounded-lg shadow-float p-2 lg:p-3">
+            <div className="text-xs lg:text-sm text-pro-gray-500 mb-0.5 lg:mb-1">BTC / USDT</div>
+            <div className="text-xl lg:text-2xl font-bold font-mono text-pro-gray-800">
               {priceData.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
             <div
-              className={`text-sm font-medium mt-1 ${
+              className={`text-xs lg:text-sm font-medium mt-0.5 lg:mt-1 ${
                 isPositive ? 'text-pro-accent-green' : 'text-pro-accent-red'
               }`}
             >
