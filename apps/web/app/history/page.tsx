@@ -167,14 +167,14 @@ export default function HistoryPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white rounded-lg shadow-panel p-4 mb-4 flex flex-wrap items-center gap-4">
-        {/* Type Filters */}
-        <div className="flex flex-wrap gap-2">
+      <div className="bg-white rounded-lg shadow-panel p-3 lg:p-4 mb-4 flex flex-col lg:flex-row lg:flex-wrap lg:items-center gap-3 lg:gap-4">
+        {/* Type Filters - 移动端横向滚动 */}
+        <div className="flex gap-2 overflow-x-auto pb-1 lg:pb-0 -mx-1 px-1 lg:mx-0 lg:px-0">
           {TYPE_FILTERS.slice(0, 5).map((filter) => (
             <button
               key={filter.value}
               onClick={() => setTypeFilter(filter.value)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              className={`flex-shrink-0 px-3 lg:px-4 py-2 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
                 typeFilter === filter.value
                   ? 'bg-pro-gray-900 text-white'
                   : 'border border-pro-gray-200 text-pro-gray-600 hover:border-pro-gray-300'
@@ -220,7 +220,7 @@ export default function HistoryPage() {
         {/* Export */}
         <button
           onClick={exportCSV}
-          className="px-4 py-2 border border-pro-gray-200 rounded-md text-sm text-pro-gray-600 hover:border-pro-accent-cyan hover:text-pro-accent-cyan transition-colors"
+          className="px-4 py-2 border border-pro-gray-200 rounded-md text-sm text-pro-gray-600 hover:border-pro-accent-cyan hover:text-pro-accent-cyan transition-colors whitespace-nowrap"
         >
           导出 CSV
         </button>
