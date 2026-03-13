@@ -6,6 +6,7 @@
 import type { FastifyInstance } from "fastify";
 import { prisma } from "../db/client";
 import {
+  buildSiweUri,
   generateSiweMessage,
   verifySiweSignature
 } from "../utils/siwe";
@@ -115,6 +116,26 @@ export class AuthService {
       message: input.message,
       signature: input.signature
     });
+
+    if (siweResult.nonce !== input.nonce) {
+      throw new Error("SIWE nonce mismatch.");
+    }
+
+    if (siweResult.chainId !== input.chainId) {
+      throw new Error("SIWE chain mismatch.");
+    }
+
+    if (siweResult.domain !== config.siwe.domain) {
+      throw new Error("SIWE domain mismatch.");
+    }
+
+    if (siweResult.uri !== buildSiweUri(config.siwe.domain)) {
+      throw new Error("SIWE uri mismatch.");
+    }
+
+    if (!siweResult.expirationTime || new Date(siweResult.expirationTime) <= new Date()) {
+      throw new Error("Challenge expired. Please request a new challenge.");
+    }
 
     if (siweResult.address.toLowerCase() !== input.walletAddress.toLowerCase()) {
       throw new Error("Signature address mismatch.");

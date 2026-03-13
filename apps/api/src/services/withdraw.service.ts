@@ -7,6 +7,7 @@ import { prisma } from "../db/client";
 import { blockchainClient } from "../clients/blockchain";
 import { logger } from "../utils/logger";
 import type { Address } from "viem";
+import { AppError } from "../errors/app-error";
 
 export interface WithdrawResult {
   transactionId: string;
@@ -47,19 +48,25 @@ export class WithdrawService {
 
     // 3. 检查可用余额
     if (account.availableBalance < amount) {
-      throw new Error("Insufficient available balance");
+      throw new AppError("INSUFFICIENT_BALANCE", "Insufficient available balance");
     }
 
     // 4. 预扣余额（事务）
     const transaction = await prisma.$transaction(async (tx) => {
-      // 锁定余额
-      await tx.account.update({
-        where: { id: account.id },
+      const reservedAccount = await tx.account.updateMany({
+        where: {
+          id: account.id,
+          availableBalance: { gte: amount }
+        },
         data: {
-          availableBalance: { decrement: amount },
-          lockedBalance: { increment: amount }
+          // 提现只占用可用余额，不能污染交易保证金锁仓。
+          availableBalance: { decrement: amount }
         }
       });
+
+      if (reservedAccount.count !== 1) {
+        throw new AppError("INSUFFICIENT_BALANCE", "Insufficient available balance");
+      }
 
       // 创建提现交易记录
       return tx.transaction.create({
@@ -107,33 +114,62 @@ export class WithdrawService {
     walletAddress: string,
     amount: bigint
   ): Promise<void> {
+    let txHash: string;
+
     try {
-      // 执行链上提现
-      const txHash = await blockchainClient.executeWithdraw(
+      txHash = await blockchainClient.executeWithdraw(
         walletAddress as Address,
         amount
       );
+    } catch (error) {
+      await this.handleWithdrawalFailure(
+        transactionId,
+        error instanceof Error ? error.message : "Unknown error"
+      );
+      return;
+    }
 
-      // 更新交易状态
+    try {
       await prisma.transaction.update({
         where: { id: transactionId },
         data: {
-          txHash,
-          status: "PENDING" // 等待 Indexer 确认
+          txHash
         }
       });
+    } catch (error) {
+      logger.error({
+        msg: "Failed to persist withdrawal tx hash; keeping request pending for manual reconciliation",
+        transactionId,
+        txHash,
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+      return;
+    }
 
-      // 等待交易确认
+    try {
       const result = await blockchainClient.waitForTransaction(txHash);
 
       if (result === "reverted") {
         await this.handleWithdrawalFailure(transactionId, "Transaction reverted");
       }
     } catch (error) {
-      await this.handleWithdrawalFailure(
+      await prisma.transaction.update({
+        where: { id: transactionId },
+        data: {
+          metadata: {
+            confirmationState: "UNKNOWN",
+            lastError: error instanceof Error ? error.message : "Unknown error",
+            txHash
+          }
+        }
+      });
+
+      logger.warn({
+        msg: "Withdrawal confirmation status is unknown; request remains pending",
         transactionId,
-        error instanceof Error ? error.message : "Unknown error"
-      );
+        txHash,
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
     }
   }
 
@@ -153,13 +189,21 @@ export class WithdrawService {
       return;
     }
 
+    if (transaction.status !== "PENDING") {
+      logger.warn({
+        msg: "Skipping withdrawal rollback for non-pending transaction",
+        transactionId,
+        status: transaction.status
+      });
+      return;
+    }
+
     // 回滚余额
     await prisma.$transaction([
       prisma.account.update({
         where: { id: transaction.account.id },
         data: {
-          availableBalance: { increment: transaction.amount },
-          lockedBalance: { decrement: transaction.amount }
+          availableBalance: { increment: transaction.amount }
         }
       }),
       prisma.transaction.update({

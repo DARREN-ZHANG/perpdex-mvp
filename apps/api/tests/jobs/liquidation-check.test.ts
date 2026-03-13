@@ -65,7 +65,10 @@ describe("Liquidation", () => {
 
     // 初始化测试数据
     mockData.users.set(mockUser.id, mockUser);
-    mockData.accounts.set(mockAccount.id, mockAccount);
+    mockData.accounts.set(mockAccount.id, {
+      ...mockAccount,
+      lockedBalance: BigInt("10000000000")
+    });
 
     // 创建 TradeEngine 实例
     tradeEngine = new TradeModule.TradeEngine();
@@ -164,15 +167,13 @@ describe("Liquidation", () => {
 
         mockData.positions.set(position.id, position);
 
-        // 获取清算前的 lockedBalance
         const accountBefore = mockData.accounts.get(mockAccount.id);
-        const lockedBefore = accountBefore?.lockedBalance || BigInt(0);
 
         await tradeEngine.liquidatePosition(position.id, new Decimal("45000"));
 
-        // 验证 lockedBalance 减少了（保证金被扣除）
+        // 验证 lockedBalance 被重算为剩余 OPEN 仓位的保证金总和
         const accountAfter = mockData.accounts.get(mockAccount.id);
-        expect(accountAfter?.lockedBalance).toBe(lockedBefore - position.margin);
+        expect(accountAfter?.lockedBalance).toBe(BigInt(0));
 
         // 验证 availableBalance 没有增加（保证金不返还）
         expect(accountAfter?.availableBalance).toBe(accountBefore?.availableBalance);

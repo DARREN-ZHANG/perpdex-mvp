@@ -1,7 +1,8 @@
 // apps/web/components/wallet/connect-button.tsx
 'use client'
 
-import { useAppKit, useAppKitAccount } from '@reown/appkit/react'
+import { useEffect, useState } from 'react'
+import { useAppKit } from '@reown/appkit/react'
 import { useAuth } from '@/hooks/use-auth'
 
 // 缩短地址显示
@@ -11,12 +12,40 @@ function shortenAddress(address: string): string {
 
 export function ConnectButton() {
   const { open } = useAppKit()
-  const { address, isConnected } = useAppKitAccount()
-  const { isAuthenticated, isLoading, login, logout } = useAuth()
+  const [hasMounted, setHasMounted] = useState(false)
+  const {
+    address,
+    isAuthenticated,
+    isConnected,
+    isConnecting,
+    isLoading,
+    isReconnecting,
+    login,
+    logout,
+  } = useAuth()
+
+  useEffect(() => {
+    setHasMounted(true)
+  }, [])
 
   // 处理登录
   const handleLogin = () => {
     login()
+  }
+
+  const shouldShowLoadingState =
+    !hasMounted ||
+    isConnecting ||
+    isReconnecting ||
+    (isConnected && isLoading && !isAuthenticated)
+
+  if (shouldShowLoadingState) {
+    return (
+      <div className="flex items-center gap-2" aria-label="正在恢复钱包状态">
+        <div className="h-4 w-24 rounded bg-gray-700/80 animate-pulse" />
+        <div className="h-9 w-14 rounded-md bg-gray-700/80 animate-pulse" />
+      </div>
+    )
   }
 
   // 未连接钱包 - 显示连接按钮

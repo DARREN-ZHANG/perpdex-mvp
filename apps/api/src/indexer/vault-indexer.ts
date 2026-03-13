@@ -215,6 +215,7 @@ export class VaultIndexer {
         txHash: event.transactionHash,
         error: error instanceof Error ? error.message : "Unknown error"
       });
+      throw error;
     }
   }
 
@@ -244,6 +245,7 @@ export class VaultIndexer {
         txHash: event.transactionHash,
         error: error instanceof Error ? error.message : "Unknown error"
       });
+      throw error;
     }
   }
 

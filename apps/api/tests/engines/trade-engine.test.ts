@@ -375,6 +375,25 @@ describe("TradeEngine", () => {
           tradeEngine.closePosition(mockUser.id, otherPosition.id)
         ).rejects.toThrow("Position not found or already closed");
       });
+
+      it("应该在仓位被并发抢占后拒绝重复平仓", async () => {
+        vi.mocked(marketServiceMock.marketService.getMarkPrice).mockImplementationOnce(
+          async () => {
+            const currentPosition = mockData.positions.get(testPosition.id);
+            mockData.positions.set(testPosition.id, {
+              ...currentPosition!,
+              status: "CLOSED"
+            });
+            return new Decimal("50000");
+          }
+        );
+
+        await expect(
+          tradeEngine.closePosition(mockUser.id, testPosition.id)
+        ).rejects.toThrow("Position not found or already closed");
+
+        expect(Array.from(mockData.orders.values())).toHaveLength(0);
+      });
     });
 
     describe("PnL 计算", () => {
@@ -451,6 +470,20 @@ describe("TradeEngine", () => {
     });
 
     describe("保证金释放", () => {
+      it("应该在账户锁定余额脏数据时按 OPEN 仓位重算后完成平仓", async () => {
+        mockData.accounts.set(mockAccount.id, {
+          ...mockData.accounts.get(mockAccount.id)!,
+          availableBalance: BigInt("5000000000"),
+          lockedBalance: BigInt("900000000")
+        });
+
+        await tradeEngine.closePosition(mockUser.id, testPosition.id);
+
+        const updatedAccount = mockData.accounts.get(mockAccount.id);
+        expect(updatedAccount?.lockedBalance).toBe(BigInt(0));
+        expect(updatedAccount?.availableBalance).toBe(BigInt("10000000000"));
+      });
+
       it("应该释放保证金到可用余额", async () => {
         await tradeEngine.closePosition(mockUser.id, testPosition.id);
 
@@ -628,6 +661,10 @@ describe("TradeEngine", () => {
         status: "OPEN"
       });
       mockData.positions.set(testPosition.id, testPosition);
+      mockData.accounts.set(mockAccount.id, {
+        ...mockAccount,
+        lockedBalance: BigInt("5000000000")
+      });
     });
 
     it("应该将仓位标记为 LIQUIDATED", async () => {

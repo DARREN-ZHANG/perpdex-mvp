@@ -192,15 +192,6 @@ export class EventHandler {
 
     // 事务：更新余额 + 更新交易状态
     await prisma.$transaction(async (tx) => {
-      // 释放锁定余额（提现在请求时已锁定）
-      await tx.account.update({
-        where: { id: account.id },
-        data: {
-          lockedBalance: { decrement: event.amount },
-          equity: { decrement: event.amount }
-        }
-      });
-
       // 查找并更新对应的提现请求
       const pendingWithdraw =
         await tx.transaction.findFirst({
@@ -213,14 +204,36 @@ export class EventHandler {
           orderBy: { createdAt: "desc" }
         }) ??
         await tx.transaction.findFirst({
-        where: {
-          userId: user.id,
-          type: "WITHDRAW",
-          status: "PENDING",
-          amount: event.amount
-        },
-        orderBy: { createdAt: "desc" }
-      });
+          where: {
+            userId: user.id,
+            type: "WITHDRAW",
+            status: "PENDING",
+            amount: event.amount
+          },
+          orderBy: { createdAt: "desc" }
+        });
+
+      if (pendingWithdraw) {
+        // 提现申请阶段已经扣减了 availableBalance，这里只在链上确认后扣减权益。
+        await tx.account.update({
+          where: { id: account.id },
+          data: {
+            equity: { decrement: event.amount }
+          }
+        });
+      } else {
+        // 兜底处理未知提现事件：只影响可用余额，避免误伤保证金锁仓。
+        await tx.account.updateMany({
+          where: {
+            id: account.id,
+            availableBalance: { gte: event.amount }
+          },
+          data: {
+            availableBalance: { decrement: event.amount },
+            equity: { decrement: event.amount }
+          }
+        });
+      }
 
       if (pendingWithdraw) {
         await tx.transaction.update({

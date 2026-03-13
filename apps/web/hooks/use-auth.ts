@@ -159,7 +159,7 @@ async function ensureAuthHydrated(address?: string | null) {
 export function useAuth() {
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
   const queryClient = useQueryClient()
-  const { address, isConnected, chainId } = useAccount()
+  const { address, isConnected, chainId, isConnecting, isReconnecting } = useAccount()
   const { signMessageAsync } = useSignMessage()
   const { disconnectAsync } = useDisconnect()
   const hasEverConnectedRef = useRef(false)
@@ -371,6 +371,8 @@ export function useAuth() {
     ...state,
     address,
     isConnected,
+    isConnecting,
+    isReconnecting,
     login,
     logout,
     clearError,

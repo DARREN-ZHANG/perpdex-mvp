@@ -75,9 +75,11 @@ enum HedgeTrigger {
 
 enum HedgeStatus {
   PENDING
+  PROCESSING
   SUBMITTED
   FILLED
   FAILED
+  SUBMIT_UNKNOWN
 }
 
 model User {

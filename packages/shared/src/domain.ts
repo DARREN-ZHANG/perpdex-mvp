@@ -33,7 +33,14 @@ export const transactionTypeSchema = z.enum([
 ]);
 export const transactionStatusSchema = z.enum(["PENDING", "CONFIRMED", "FAILED", "REVERTED"]);
 export const chainEventNameSchema = z.enum(["DEPOSIT", "WITHDRAW"]);
-export const hedgeStatusSchema = z.enum(["PENDING", "SUBMITTED", "FILLED", "FAILED"]);
+export const hedgeStatusSchema = z.enum([
+  "PENDING",
+  "PROCESSING",
+  "SUBMITTED",
+  "FILLED",
+  "FAILED",
+  "SUBMIT_UNKNOWN"
+]);
 export const hedgePrioritySchema = z.enum(["HIGH", "NORMAL", "LOW"]);
 export const hedgeTriggerSchema = z.enum(["OPEN", "CLOSE", "MARGIN_ADJUST", "LIQUIDATION", "MANUAL"]);
 export const paginationQuerySchema = z.object({
