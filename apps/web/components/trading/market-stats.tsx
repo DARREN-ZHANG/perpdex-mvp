@@ -1,6 +1,6 @@
 'use client'
 
-import { useBinancePrice } from '@/hooks/use-binance-price'
+import type { BinancePriceData } from '@/lib/binance-market'
 
 interface StatItemProps {
   label: string
@@ -36,10 +36,15 @@ function formatVolume(volume: number): string {
   return volume.toFixed(2)
 }
 
-export function MarketStats() {
-  const { data: priceData, isLoading } = useBinancePrice('BTCUSDT')
+export interface MarketStatsProps {
+  priceData: BinancePriceData | null
+  isLoading?: boolean
+  error?: string | null
+}
 
-  if (isLoading || !priceData) {
+export function MarketStats({ priceData, isLoading = false, error = null }: MarketStatsProps) {
+
+  if (isLoading && !priceData) {
     return (
       <div className="grid grid-cols-5 gap-px bg-pro-gray-100">
         {[...Array(5)].map((_, i) => (
@@ -52,14 +57,31 @@ export function MarketStats() {
     )
   }
 
+  if (!priceData) {
+    return (
+      <div className="grid grid-cols-5 gap-px bg-pro-gray-100">
+        {[
+          '最新价格',
+          '24h 涨跌',
+          '24h 最高',
+          '24h 最低',
+          '24h 成交量',
+        ].map((label) => (
+          <StatItem key={label} label={label} value="--" />
+        ))}
+        {error && (
+          <div className="col-span-5 bg-white px-4 py-2 text-center text-xs text-pro-accent-red">
+            {error}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="grid grid-cols-5 gap-px bg-pro-gray-100">
       <StatItem
-        label="标记价格"
-        value={priceData.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-      />
-      <StatItem
-        label="指数价格"
+        label="最新价格"
         value={priceData.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
       />
       <StatItem
@@ -71,6 +93,10 @@ export function MarketStats() {
       <StatItem
         label="24h 最高"
         value={priceData.high24h.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+      />
+      <StatItem
+        label="24h 最低"
+        value={priceData.low24h.toLocaleString('en-US', { minimumFractionDigits: 2 })}
       />
       <StatItem
         label="24h 成交量"

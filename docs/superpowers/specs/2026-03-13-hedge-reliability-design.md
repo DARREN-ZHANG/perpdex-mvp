@@ -63,6 +63,71 @@ PENDING → ENQUEUED → PROCESSING → FILLED
 - 重试条件：网络错误、API 限流、临时故障
 - 不重试：参数错误、资产不存在
 
+#### 状态转换定义（packages/shared/src/hedge.ts）
+
+```typescript
+// 更新状态转换规则
+export const hedgeStatusTransitions: Record<HedgeStatus, HedgeStatus[]> = {
+  PENDING: ["ENQUEUED"],
+  ENQUEUED: ["PROCESSING", "FAILED"],
+  PROCESSING: ["FILLED", "RETRYABLE", "FAILED"],
+  RETRYABLE: ["ENQUEUED", "FAILED"],
+  FILLED: [],
+  FAILED: []
+};
+
+export function canTransitionHedgeStatus(from: HedgeStatus, to: HedgeStatus): boolean {
+  return hedgeStatusTransitions[from]?.includes(to) ?? false;
+}
+```
+
+#### RETRYABLE 重试调度器
+
+```typescript
+// apps/api/src/workers/retry-scheduler.ts
+const MAX_RETRY_COUNT = 5;
+
+export function startRetryScheduler() {
+  // 每 5 秒扫描一次 RETRYABLE 任务
+  setInterval(async () => {
+    const retryable = await prisma.hedgeOrder.findMany({
+      where: {
+        status: "RETRYABLE",
+        retryCount: { lt: MAX_RETRY_COUNT }
+      },
+      take: 50
+    });
+
+    for (const task of retryable) {
+      // 指数退避检查
+      const lastAttempt = task.updatedAt;
+      const backoffMs = Math.pow(2, task.retryCount) * 1000;
+      if (Date.now() - lastAttempt.getTime() < backoffMs) {
+        continue; // 还在退避期
+      }
+
+      // 重新写入 Outbox
+      await prisma.$transaction([
+        prisma.hedgeOrder.update({
+          where: { id: task.id },
+          data: {
+            status: "ENQUEUED",
+            retryCount: { increment: 1 }
+          }
+        }),
+        prisma.hedgeOutbox.create({
+          data: {
+            taskId: task.taskId,
+            payload: task.payload,
+            status: "PENDING"
+          }
+        })
+      ]);
+    }
+  }, 5000);
+}
+```
+
 #### 优先级修复（P4）
 
 ```typescript
@@ -87,6 +152,16 @@ function getPriorityNumber(priority?: string): number {
 #### Schema 修改
 
 ```prisma
+// 更新 HedgeStatus 枚举
+enum HedgeStatus {
+  PENDING    // 初始状态
+  ENQUEUED   // 已入队
+  PROCESSING // 处理中
+  RETRYABLE  // 可重试
+  FILLED     // 成功
+  FAILED     // 终态失败
+}
+
 model Position {
   // ... existing fields
 
@@ -109,6 +184,22 @@ model HedgeOutbox {
 
   @@index([status, createdAt])
 }
+
+// 新增：坏账记录
+model BadDebt {
+  id         String   @id @default(cuid())
+  userId     String
+  positionId String
+  amount     BigInt      // 坏账金额 (USDC, 6 decimals)
+  reason     String      @db.VarChar(64) // SHORT_OVERLOSS, LIQUIDATION_SHORTFALL
+  createdAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id])
+  position Position @relation(fields: [positionId], references: [id])
+
+  @@index([userId])
+  @@map("bad_debts")
+}
 ```
 
 #### 部分唯一索引迁移
@@ -128,13 +219,20 @@ async createMarketOrder(input: CreateOrderInput): Promise<CreateOrderResult> {
 
   // 事务内完成所有数据库写入
   const result = await prisma.$transaction(async (tx) => {
-    // 1. 锁定账户（SELECT FOR UPDATE 或使用版本号）
+    // 1. 获取账户（带版本号用于乐观锁）
     const account = await tx.account.findUnique({
       where: { userId_asset: { userId, asset: "USDC" } }
     });
 
-    if (!account || account.availableBalance < margin) {
-      throw new TradeError("INSUFFICIENT_BALANCE", ...);
+    if (!account) {
+      throw new TradeError("ACCOUNT_NOT_FOUND", "Account not found");
+    }
+
+    if (account.availableBalance < margin) {
+      throw new TradeError("INSUFFICIENT_BALANCE",
+        `Available balance ${account.availableBalance} USDC is less than required margin ${margin} USDC`,
+        { available: account.availableBalance.toString(), required: margin.toString() }
+      );
     }
 
     // 2. 检查现有仓位（唯一约束会二次保护）
@@ -142,18 +240,30 @@ async createMarketOrder(input: CreateOrderInput): Promise<CreateOrderResult> {
       where: { userId, symbol, status: "OPEN" }
     });
     if (existing) {
-      throw new TradeError("POSITION_EXISTS", ...);
+      throw new TradeError("POSITION_EXISTS",
+        "Position already exists for this symbol",
+        { existingPositionId: existing.id }
+      );
     }
 
-    // 3. 更新账户余额
-    await tx.account.update({
-      where: { id: account.id },
+    // 3. 更新账户余额（乐观锁：version 自增）
+    const updateResult = await tx.account.updateMany({
+      where: {
+        id: account.id,
+        version: account.version  // 乐观锁检查
+      },
       data: {
         availableBalance: { decrement: margin },
         lockedBalance: { increment: margin },
         version: { increment: 1 }
       }
     });
+
+    if (updateResult.count === 0) {
+      throw new TradeError("CONCURRENT_MODIFICATION",
+        "Account was modified by another transaction, please retry"
+      );
+    }
 
     // 4. 创建订单和仓位
     const order = await tx.order.create({ ... });
@@ -164,20 +274,27 @@ async createMarketOrder(input: CreateOrderInput): Promise<CreateOrderResult> {
       }
     });
 
-    // 5. 创建对冲订单
+    // 5. 创建对冲订单（PENDING 状态）
     await tx.hedgeOrder.create({
       data: {
         taskId: hedgeTaskId,
         status: "PENDING",
+        retryCount: 0,
         ...
       }
     });
 
-    // 6. 写入 Outbox
+    // 6. 写入 Outbox（唯一入队入口）
     await tx.hedgeOutbox.create({
       data: {
         taskId: hedgeTaskId,
-        payload: { taskId, symbol, side, size, ... },
+        payload: {
+          taskId: hedgeTaskId,
+          symbol,
+          side: hedgeSide,
+          size: size.toString(),
+          priority: "NORMAL"
+        },
         status: "PENDING"
       }
     });
@@ -185,7 +302,9 @@ async createMarketOrder(input: CreateOrderInput): Promise<CreateOrderResult> {
     return { order, position };
   });
 
-  // 事务外：由 dispatcher 负责入队（不阻塞用户请求）
+  // 注意：不再调用异步的 addHedgeTask
+  // 由 Outbox Dispatcher 负责入队
+
   return result;
 }
 ```
@@ -193,39 +312,56 @@ async createMarketOrder(input: CreateOrderInput): Promise<CreateOrderResult> {
 #### Outbox Dispatcher
 
 ```typescript
-// 启动时运行
-async function startOutboxDispatcher() {
-  setInterval(async () => {
-    const pending = await prisma.hedgeOutbox.findMany({
-      where: { status: "PENDING" },
-      take: 100,
-      orderBy: { createdAt: "asc" }
-    });
+// apps/api/src/workers/outbox-dispatcher.ts
+const OUTBOX_POLL_INTERVAL = 1000; // 1秒
+const OUTBOX_BATCH_SIZE = 100;
 
-    for (const item of pending) {
-      try {
-        await addHedgeTask(item.payload as HedgeJobData);
-        await prisma.hedgeOutbox.update({
+export function startOutboxDispatcher() {
+  setInterval(async () => {
+    try {
+      await processOutbox();
+    } catch (error) {
+      logger.error({ msg: "Outbox dispatcher error", error });
+    }
+  }, OUTBOX_POLL_INTERVAL);
+}
+
+async function processOutbox() {
+  const pending = await prisma.hedgeOutbox.findMany({
+    where: { status: "PENDING" },
+    take: OUTBOX_BATCH_SIZE,
+    orderBy: { createdAt: "asc" }
+  });
+
+  for (const item of pending) {
+    try {
+      // 发送到 BullMQ
+      await addHedgeTask(item.payload as HedgeJobData);
+
+      // 事务内更新状态：确保 outbox 和 hedgeOrder 一致
+      await prisma.$transaction([
+        prisma.hedgeOutbox.update({
           where: { id: item.id },
           data: { status: "SENT", sentAt: new Date() }
-        });
-        // 更新 hedgeOrder 状态
-        await prisma.hedgeOrder.update({
+        }),
+        prisma.hedgeOrder.update({
           where: { taskId: item.taskId },
           data: { status: "ENQUEUED", enqueuedAt: new Date() }
-        });
-      } catch (error) {
-        await prisma.hedgeOutbox.update({
-          where: { id: item.id },
-          data: {
-            status: "FAILED",
-            error: error.message,
-            attempts: { increment: 1 }
-          }
-        });
-      }
+        })
+      ]);
+    } catch (error) {
+      // 单独更新 outbox 失败状态
+      await prisma.hedgeOutbox.update({
+        where: { id: item.id },
+        data: {
+          status: "FAILED",
+          error: error instanceof Error ? error.message : "Unknown error",
+          attempts: { increment: 1 }
+        }
+      });
+      // hedgeOrder 保持 PENDING 状态，等待下次调度
     }
-  }, 1000); // 每秒轮询
+  }
 }
 ```
 
@@ -291,8 +427,52 @@ async function runLiquidationCheck(): Promise<void> {
 }
 
 async function triggerLiquidation(position, markPrice, metrics) {
+  // 再次检查仓位状态（防止与手动平仓竞争）
+  const freshPosition = await prisma.position.findUnique({
+    where: { id: position.id }
+  });
+  if (!freshPosition || freshPosition.status !== "OPEN") {
+    logger.info({ msg: "Position already closed, skip liquidation", positionId: position.id });
+    return;
+  }
+
   // 调用现有的 liquidatePosition
   await tradeEngine.liquidatePosition(position.id, "AUTO_LIQUIDATION");
+}
+
+// 清算调度器（使用 BullMQ Repeatable Job 更可靠）
+// apps/api/src/jobs/liquidation-scheduler.ts
+import { Queue, Worker } from "bullmq";
+
+const LIQUIDATION_QUEUE = "liquidation-check";
+
+export function startLiquidationScheduler() {
+  const queue = new Queue(LIQUIDATION_QUEUE, { connection });
+
+  // 每 5 分钟执行一次
+  queue.add("check", {}, {
+    repeat: { every: 5 * 60 * 1000 },
+    jobId: "liquidation-check"
+  });
+
+  const worker = new Worker(LIQUIDATION_QUEUE, async (job) => {
+    // 使用 Redis 分布式锁防止多实例重复执行
+    const lockKey = "liquidation:check:lock";
+    const locked = await redis.set(lockKey, "1", "NX", "EX", 300); // 5分钟过期
+
+    if (!locked) {
+      logger.info({ msg: "Liquidation check already running on another instance" });
+      return;
+    }
+
+    try {
+      await runLiquidationCheck();
+    } finally {
+      await redis.del(lockKey);
+    }
+  }, { connection });
+
+  return { queue, worker };
 }
 ```
 
@@ -490,6 +670,10 @@ function getStatusCode(code: TradeErrorCode): number {
 | Schema 迁移失败 | 阻塞部署 | 先在测试环境验证，准备回滚脚本 |
 | Outbox 轮询延迟 | 对冲延迟增加 | 可接受（秒级延迟），后续可优化为事件驱动 |
 | 清算巡检性能 | 数据库压力 | 分批处理，添加索引 |
+| Outbox 单点故障 | Dispatcher 崩溃导致对冲停止 | 使用 BullMQ Repeatable Job 替代 setInterval |
+| RETRYABLE 堆积 | 大量任务需人工介入 | Retry Scheduler 自动重入队，添加堆积告警 |
+| 清算与平仓竞争 | 状态不一致 | 执行前再次检查 position.status |
+| Hyperliquid API 限流 | 对冲失败 | 识别 429 错误，增加退避时间 |
 
 ---
 

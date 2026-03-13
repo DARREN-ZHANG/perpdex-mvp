@@ -26,6 +26,9 @@ export interface MarketData {
   indexPrice: string
   change24h: string
   openInterest: string
+  high24h?: string
+  low24h?: string
+  volume24h?: string
   updatedAt: string
 }
 

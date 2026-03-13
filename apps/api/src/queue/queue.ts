@@ -138,8 +138,10 @@ export async function moveToDLQ(
  */
 function getPriorityNumber(priority?: string): number {
   switch (priority) {
+    case "HIGH":
     case "high":
       return 1;
+    case "LOW":
     case "low":
       return 10;
     default:

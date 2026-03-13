@@ -1,35 +1,14 @@
 // apps/api/src/clients/hyperliquid.ts
 /**
  * Hyperliquid API 客户端
- * 用于执行对冲订单
+ * 使用 @nktkas/hyperliquid SDK 进行真实交易
  */
+import * as hl from "@nktkas/hyperliquid";
+import { privateKeyToAccount } from "viem/accounts";
 import { logger } from "../utils/logger";
 import { config } from "../config/index";
 
-// Hyperliquid API 类型
-interface HyperliquidOrderRequest {
-  coin: string;
-  is_buy: boolean;
-  sz: string;
-  limit_px?: string;
-  order_type: "market" | "limit";
-  reduce_only?: boolean;
-}
-
-interface HyperliquidOrderResponse {
-  status: "ok" | "err";
-  response: {
-    type: "order";
-    data: {
-      statuses: Array<{
-        resting?: { oid: number };
-        filled?: { avgPx: string; oid: number };
-        error?: string;
-      }>;
-    };
-  };
-}
-
+// Hyperliquid 持仓信息
 interface HyperliquidPosition {
   coin: string;
   szi: string;
@@ -38,86 +17,185 @@ interface HyperliquidPosition {
   unrealizedPnl: string;
 }
 
+// 订单结果
+interface OrderResult {
+  orderId: string;
+  averagePrice?: string;
+}
+
 export class HyperliquidClient {
-  private apiUrl: string;
-  private privateKey: string | null;
+  private walletClient: hl.WalletClient | null = null;
+  private publicClient: hl.PublicClient | null = null;
+  private walletAddress: `0x${string}` | null = null;
+  private isTestnet: boolean;
 
   constructor() {
-    this.apiUrl = config.external.hyperliquidApiUrl;
-    this.privateKey = process.env.HYPERLIQUID_PRIVATE_KEY ?? null;
+    this.isTestnet = config.external.hyperliquidApiUrl.includes("testnet");
+    this.initializeClient();
+  }
+
+  /**
+   * 初始化 Hyperliquid 客户端
+   */
+  private initializeClient(): void {
+    const privateKey = process.env.HYPERLIQUID_PRIVATE_KEY;
+
+    if (!privateKey) {
+      logger.warn({
+        msg: "HYPERLIQUID_PRIVATE_KEY not set, client will operate in mock mode"
+      });
+      return;
+    }
+
+    try {
+      // 从私钥创建 viem 账户
+      const account = privateKeyToAccount(privateKey as `0x${string}`);
+      this.walletAddress = account.address;
+
+      // 创建 HTTP 传输层
+      const transport = new hl.HttpTransport({
+        isTestnet: this.isTestnet
+      });
+
+      // 创建公共客户端（用于查询）
+      this.publicClient = new hl.PublicClient({
+        transport
+      });
+
+      // 创建钱包客户端（用于交易）
+      this.walletClient = new hl.WalletClient({
+        wallet: account,
+        transport,
+        isTestnet: this.isTestnet
+      });
+
+      logger.info({
+        msg: "Hyperliquid client initialized",
+        address: this.walletAddress,
+        network: this.isTestnet ? "testnet" : "mainnet"
+      });
+    } catch (error) {
+      logger.error({
+        msg: "Failed to initialize Hyperliquid client",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
   }
 
   /**
    * 提交市价订单
+   * @param coin 币种，如 "BTC"
+   * @param side 方向: "buy" 或 "sell"
+   * @param size 数量
    */
   async submitMarketOrder(
     coin: string,
     side: "buy" | "sell",
     size: string
-  ): Promise<{ orderId: string; averagePrice?: string }> {
-    if (!this.privateKey) {
-      // 开发环境：mock 响应
+  ): Promise<OrderResult> {
+    // 如果客户端未初始化，返回 mock 响应
+    if (!this.walletClient || !this.publicClient) {
       logger.warn({
-        msg: "HYPERLIQUID_PRIVATE_KEY not set, returning mock response",
+        msg: "Hyperliquid client not initialized, returning mock response",
         coin,
         side,
         size
       });
       return {
         orderId: `mock-${Date.now()}`,
-        averagePrice: "50000" // Mock price
+        averagePrice: "50000"
       };
     }
 
-    const orderRequest: HyperliquidOrderRequest = {
-      coin,
-      is_buy: side === "buy",
-      sz: size,
-      order_type: "market"
-    };
-
     try {
-      const response = await fetch(`${this.apiUrl}/exchange`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: {
-            type: "order",
-            orders: [orderRequest],
-            grouping: "na"
-          },
-          nonce: Date.now()
-          // 签名逻辑需要 EIP-712 实现
-          // signature: await this.signRequest(...)
-        })
-      });
-
-      const result: HyperliquidOrderResponse = await response.json();
-
-      if (result.status !== "ok") {
-        throw new Error(`Hyperliquid API error: ${JSON.stringify(result)}`);
-      }
-
-      const status = result.response.data.statuses[0];
-
-      if (status.error) {
-        throw new Error(`Order error: ${status.error}`);
-      }
-
-      // 返回订单 ID
-      const orderId = status.resting?.oid?.toString() ?? status.filled?.oid?.toString() ?? "";
-      const averagePrice = status.filled?.avgPx;
-
       logger.info({
-        msg: "Hyperliquid order submitted",
+        msg: "Submitting market order to Hyperliquid",
         coin,
         side,
         size,
-        orderId,
-        averagePrice
+        address: this.walletAddress
       });
 
-      return { orderId, averagePrice };
+      // 获取资产的元数据，找到资产索引和 tick size
+      const meta = await this.publicClient.meta();
+      const assetIndex = meta.universe.findIndex(
+        (item: { name: string }) => item.name === coin
+      );
+
+      if (assetIndex === -1) {
+        throw new Error(`Asset ${coin} not found in Hyperliquid`);
+      }
+
+      // 根据资产不同，价格精度可能不同，一般使用 0.1 或 1 作为步长
+      // ETH 使用 0.1，BTC 使用 1
+      const priceStep = coin === "BTC" ? 1 : 0.1;
+
+      // 获取当前市场价格
+      const markPrice = await this.getMarkPrice(coin);
+
+      // 计算滑点后的价格（买入稍高，卖出稍低）
+      const slippage = 0.01; // 1% 滑点
+      const priceFloat = parseFloat(markPrice);
+      const rawPrice = side === "buy"
+        ? priceFloat * (1 + slippage)
+        : priceFloat * (1 - slippage);
+
+      // 将价格四舍五入到 tick size
+      const limitPrice = (Math.round(rawPrice / priceStep) * priceStep).toFixed(
+        coin === "BTC" ? 0 : 1
+      );
+
+      // 使用 SDK 的 order 方法提交订单
+      const result = await this.walletClient.order({
+        orders: [{
+          a: assetIndex,           // 资产索引
+          b: side === "buy",       // 是否买入
+          p: limitPrice,           // 限价
+          s: size,                 // 数量
+          r: false,                // 不是 reduce-only
+          t: {
+            limit: {
+              tif: "Ioc"           // Immediate or Cancel (市价单)
+            }
+          }
+        }],
+        grouping: "na"             // 不分组
+      });
+
+      // 解析响应
+      if (result.status === "ok" && result.response.data.statuses.length > 0) {
+        const status = result.response.data.statuses[0];
+
+        if ("error" in status) {
+          throw new Error(`Order error: ${status.error}`);
+        }
+
+        let orderId = "";
+        let averagePrice: string | undefined;
+
+        if ("resting" in status) {
+          orderId = status.resting.oid.toString();
+        } else if ("filled" in status) {
+          orderId = status.filled.oid.toString();
+          averagePrice = status.filled.avgPx;
+        }
+
+        logger.info({
+          msg: "Hyperliquid order submitted successfully",
+          coin,
+          side,
+          size,
+          orderId,
+          averagePrice,
+          limitPrice,
+          assetIndex,
+          status: "resting" in status ? "resting" : "filled"
+        });
+
+        return { orderId, averagePrice };
+      } else {
+        throw new Error(`Unexpected response: ${JSON.stringify(result)}`);
+      }
     } catch (error) {
       logger.error({
         msg: "Hyperliquid order failed",
@@ -134,7 +212,7 @@ export class HyperliquidClient {
    * 获取当前持仓
    */
   async getPositions(): Promise<HyperliquidPosition[]> {
-    if (!this.privateKey) {
+    if (!this.walletClient || !this.walletAddress) {
       // Mock 响应
       return [
         {
@@ -148,24 +226,24 @@ export class HyperliquidClient {
     }
 
     try {
-      const response = await fetch(`${this.apiUrl}/info`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "clearinghouseState"
-        })
+      // 使用 publicClient 获取持仓
+      const state = await this.publicClient!.clearinghouseState({
+        user: this.walletAddress
       });
 
-      const result = await response.json();
+      if (!state.assetPositions) {
+        return [];
+      }
 
-      // 解析持仓数据
-      return result.assetPositions?.map((p: Record<string, unknown>) => ({
-        coin: (p.position as Record<string, unknown>)?.coin as string,
-        szi: (p.position as Record<string, unknown>)?.szi as string,
-        entryPx: (p.position as Record<string, unknown>)?.entryPx as string,
-        positionValue: (p.position as Record<string, unknown>)?.positionValue as string,
-        unrealizedPnl: (p.position as Record<string, unknown>)?.unrealizedPnl as string
-      })) ?? [];
+      return state.assetPositions
+        .filter((p: { position: { szi: string } }) => parseFloat(p.position.szi) !== 0)
+        .map((p: { position: Record<string, unknown> }) => ({
+          coin: p.position.coin as string,
+          szi: p.position.szi as string,
+          entryPx: p.position.entryPx as string,
+          positionValue: p.position.positionValue as string,
+          unrealizedPnl: p.position.unrealizedPnl as string
+        }));
     } catch (error) {
       logger.error({
         msg: "Failed to fetch Hyperliquid positions",
@@ -179,31 +257,71 @@ export class HyperliquidClient {
    * 获取市场价格
    */
   async getMarkPrice(coin: string): Promise<string> {
+    if (!this.publicClient) {
+      return "50000";
+    }
+
     try {
-      const response = await fetch(`${this.apiUrl}/info`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "metaAndAssetCtxs"
-        })
-      });
+      // 使用 SDK 获取市场元数据
+      const result = await this.publicClient.metaAndAssetCtxs();
 
-      const result = await response.json();
-
-      // 解析价格数据
-      const btcData = result.find(
-        (item: Array<unknown>) => item[0] === coin || (item[0] as Record<string, unknown>)?.coin === coin
-      );
-
-      if (btcData) {
-        const ctx = Array.isArray(btcData) ? btcData[1] : btcData;
-        return (ctx as Record<string, unknown>)?.markPx as string ?? "50000";
+      if (!result || !Array.isArray(result) || result.length < 2) {
+        logger.warn({
+          msg: "Invalid response from Hyperliquid meta API",
+          fallback: "50000"
+        });
+        return "50000";
       }
 
-      return "50000"; // Default mock
-    } catch {
-      return "50000"; // Fallback
+      const [meta, assetCtxs] = result;
+
+      if (!meta?.universe || !Array.isArray(assetCtxs)) {
+        logger.warn({
+          msg: "Invalid data structure from Hyperliquid",
+          fallback: "50000"
+        });
+        return "50000";
+      }
+
+      // 查找币种索引
+      const coinIndex = meta.universe.findIndex(
+        (item: { name: string }) => item.name === coin
+      );
+
+      if (coinIndex >= 0 && assetCtxs[coinIndex]?.markPx) {
+        return assetCtxs[coinIndex].markPx;
+      }
+
+      logger.warn({
+        msg: "Coin not found in Hyperliquid universe",
+        coin,
+        fallback: "50000"
+      });
+
+      return "50000";
+    } catch (error) {
+      logger.error({
+        msg: "Failed to fetch mark price from Hyperliquid",
+        coin,
+        error: error instanceof Error ? error.message : "Unknown error",
+        fallback: "50000"
+      });
+      return "50000";
     }
+  }
+
+  /**
+   * 获取钱包地址
+   */
+  getWalletAddress(): string | null {
+    return this.walletAddress;
+  }
+
+  /**
+   * 检查客户端是否已初始化
+   */
+  isReady(): boolean {
+    return this.walletClient !== null;
   }
 }
 

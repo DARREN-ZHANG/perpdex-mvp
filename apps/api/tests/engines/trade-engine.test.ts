@@ -488,6 +488,26 @@ describe("TradeEngine", () => {
         expect(updatedAccount.lockedBalance).toBe(BigInt(0));
       });
 
+      it("应该将最大亏损限制在已锁定保证金内", async () => {
+        const shortPosition = createMockPosition({
+          userId: mockUser.id,
+          side: "SHORT",
+          entryPrice: "50000",
+          positionSize: "0.1",
+          margin: "5000000000",
+          status: "OPEN"
+        });
+        mockData.positions.set(shortPosition.id, shortPosition);
+
+        vi.mocked(marketServiceMock.marketService.getMarkPrice).mockResolvedValue(new Decimal("1000000"));
+
+        await tradeEngine.closePosition(mockUser.id, shortPosition.id);
+
+        const updatedAccount = Array.from(mockData.accounts.values())[0];
+        expect(updatedAccount.availableBalance).toBe(BigInt("5000000000"));
+        expect(updatedAccount.lockedBalance).toBe(BigInt(0));
+      });
+
       it("应该创建保证金释放交易记录", async () => {
         await tradeEngine.closePosition(mockUser.id, testPosition.id);
 

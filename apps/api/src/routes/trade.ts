@@ -5,6 +5,10 @@
  */
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import Decimal from "decimal.js";
+import {
+  createOrderRequestSchema,
+  positionIdParamsSchema
+} from "@perpdex/shared";
 import { requireAuth, type JwtUser } from "../middleware/auth";
 import { tradeEngine } from "../engines/trade-engine";
 import { logger } from "../utils/logger";
@@ -24,14 +28,7 @@ export async function tradeRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [requireAuth] },
     async (request) => {
       const user = getJwtUser(request);
-      const body = request.body as {
-        symbol: string;
-        side: "LONG" | "SHORT";
-        size: string;
-        margin: string;
-        leverage: number;
-        clientOrderId?: string;
-      };
+      const body = createOrderRequestSchema.parse(request.body);
 
       const result = await tradeEngine.createMarketOrder({
         userId: user.id,
@@ -100,7 +97,7 @@ export async function tradeRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [requireAuth] },
     async (request) => {
       const user = getJwtUser(request);
-      const params = request.params as { id: string };
+      const params = positionIdParamsSchema.parse(request.params);
 
       const result = await tradeEngine.closePosition(user.id, params.id);
 
@@ -130,7 +127,7 @@ export async function tradeRoutes(app: FastifyInstance): Promise<void> {
     { preHandler: [requireAuth] },
     async (request) => {
       const user = getJwtUser(request);
-      const params = request.params as { id: string };
+      const params = positionIdParamsSchema.parse(request.params);
 
       const position = await tradeEngine.getPosition(user.id, params.id);
 
