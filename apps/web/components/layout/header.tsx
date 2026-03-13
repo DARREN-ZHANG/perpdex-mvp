@@ -15,7 +15,7 @@ const navItems = [
 ]
 
 export function Header() {
-  const { isAuthenticated } = useAuth()
+  useAuth()
   const pathname = usePathname()
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 

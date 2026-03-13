@@ -141,7 +141,8 @@ class ApiClient {
         }
 
         // 确保成功响应包含 success 字段
-        const { success: _ignoredSuccess, ...responseData } = data
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { success, ...responseData } = data
 
         return {
           ...responseData,
