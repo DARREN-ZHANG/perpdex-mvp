@@ -146,7 +146,7 @@ export function RecentTrades() {
   const isEmpty = isOrderTab ? orders.length === 0 : fundTransactions.length === 0
 
   return (
-    <div className="h-[280px] flex flex-col">
+    <div className="h-[240px] lg:h-[280px] flex flex-col">
       <div className="flex px-4 border-b border-pro-gray-100">
         {TABS.map((tab) => (
           <button
@@ -164,7 +164,7 @@ export function RecentTrades() {
       </div>
 
       {isOrderTab ? (
-        <div className="grid grid-cols-[96px_92px_1fr_110px_90px] items-center gap-2 px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
+        <div className="grid grid-cols-[80px_80px_1fr_90px_70px] lg:grid-cols-[96px_92px_1fr_110px_90px] items-center gap-2 px-3 lg:px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
           <span>时间</span>
           <span>方向</span>
           <span>数量 / 价格</span>
@@ -172,7 +172,7 @@ export function RecentTrades() {
           <span>状态</span>
         </div>
       ) : (
-        <div className="grid grid-cols-[100px_1fr_1fr_80px] items-center gap-2 px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
+        <div className="grid grid-cols-[80px_1fr_1fr_70px] lg:grid-cols-[100px_1fr_1fr_80px] items-center gap-2 px-3 lg:px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
           <span>时间</span>
           <span>类型</span>
           <span>数量</span>
@@ -191,7 +191,7 @@ export function RecentTrades() {
           orders.map((order) => (
             <div
               key={order.id}
-              className="grid grid-cols-[96px_92px_1fr_110px_90px] items-center gap-2 px-4 py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
+              className="grid grid-cols-[80px_80px_1fr_90px_70px] lg:grid-cols-[96px_92px_1fr_110px_90px] items-center gap-2 px-3 lg:px-4 py-2.5 lg:py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
             >
               <span className="text-pro-gray-500 font-mono text-xs">{formatTime(order.createdAt)}</span>
               <span className={`font-medium ${order.side === 'LONG' ? 'text-pro-accent-green' : 'text-pro-accent-red'}`}>
@@ -229,7 +229,7 @@ export function RecentTrades() {
           fundTransactions.map((tx) => (
             <div
               key={tx.id}
-              className="grid grid-cols-[100px_1fr_1fr_80px] items-center gap-2 px-4 py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
+              className="grid grid-cols-[80px_1fr_1fr_70px] lg:grid-cols-[100px_1fr_1fr_80px] items-center gap-2 px-3 lg:px-4 py-2.5 lg:py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
             >
               <span className="text-pro-gray-500 font-mono text-xs">{formatTime(tx.createdAt)}</span>
               <span className={`font-medium ${getFundTypeClass(tx.type)}`}>
