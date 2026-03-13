@@ -1,7 +1,16 @@
 'use client'
 
+import { formatUnits } from 'viem'
 import { useBalance } from '@/hooks/use-balance'
 import { usePositions } from '@/hooks/use-positions'
+
+const USDC_DECIMALS = 6
+
+// 将原始值转换为可读的 USDC 金额
+function formatBalance(value: string | undefined): number {
+  if (!value) return 0
+  return parseFloat(formatUnits(BigInt(value), USDC_DECIMALS))
+}
 
 interface SummaryCardProps {
   label: string
@@ -35,10 +44,10 @@ export function BalanceSummary() {
   const { balance } = useBalance()
   const { positions } = usePositions()
 
-  // 解析余额数据（字符串转为数字）
-  const equity = parseFloat(balance?.equity || '0')
-  const availableBalance = parseFloat(balance?.availableBalance || '0')
-  const lockedBalance = parseFloat(balance?.lockedBalance || '0')
+  // 解析余额数据（从原始值转换为 USDC）
+  const equity = formatBalance(balance?.equity)
+  const availableBalance = formatBalance(balance?.availableBalance)
+  const lockedBalance = formatBalance(balance?.lockedBalance)
   const totalValue = equity + availableBalance
 
   // 计算未实现盈亏

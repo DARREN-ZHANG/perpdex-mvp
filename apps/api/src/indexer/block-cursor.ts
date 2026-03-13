@@ -5,8 +5,9 @@
  */
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
+import { config } from "../config/index";
 
-export const CHAIN_ID = 421614; // Arbitrum Sepolia
+export const CHAIN_ID = config.external.chainId;
 
 export class BlockCursorManager {
   private chainId: number;

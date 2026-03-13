@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useDeposit, type DepositStep } from '@/hooks/use-deposit'
 import { useAuth } from '@/hooks/use-auth'
 import Link from 'next/link'
@@ -40,24 +40,8 @@ export default function DepositPage() {
     isApproving,
     isDepositing,
     deposit,
-    continueAfterApprove,
-    handleDepositSuccess,
     reset,
   } = useDeposit()
-
-  // 监听授权成功后继续
-  useEffect(() => {
-    if (step === 'approved') {
-      continueAfterApprove()
-    }
-  }, [step, continueAfterApprove])
-
-  // 监听存入成功
-  useEffect(() => {
-    if (step === 'confirmed') {
-      handleDepositSuccess()
-    }
-  }, [step, handleDepositSuccess])
 
   // 处理充值
   const handleDeposit = () => {
@@ -66,7 +50,7 @@ export default function DepositPage() {
   }
 
   // 快速选择金额
-  const quickAmounts = ['100', '500', '1000', '5000']
+  const quickAmounts = ['10', '100', '200', '500']
 
   // 加载状态
   if (authLoading) {

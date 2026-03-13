@@ -1,7 +1,7 @@
 // apps/web/hooks/use-deposit.ts
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from 'wagmi'
 import { formatUnits, parseUnits } from 'viem'
 import { CONTRACT_ADDRESSES, ERC20_ABI, VAULT_ABI, USDC_DECIMALS } from '@/lib/contracts'
@@ -26,6 +26,7 @@ export function useDeposit() {
     txHash: null,
     allowance: 0n,
   })
+  const [pendingDepositAmount, setPendingDepositAmount] = useState<string | null>(null)
 
   // 读取 USDC 余额
   const { data: usdcBalance } = useReadContract({
@@ -79,6 +80,7 @@ export function useDeposit() {
       // 如果授权不足，先授权
       if (allowanceValue < amountWei) {
         setState((prev) => ({ ...prev, step: 'approving' }))
+        setPendingDepositAmount(amount)
         approveUSDC({
           address: CONTRACT_ADDRESSES.USDC as `0x${string}`,
           abi: ERC20_ABI,
@@ -105,22 +107,18 @@ export function useDeposit() {
     }
   }, [address, allowance, approveUSDC, depositToVault, refetchAllowance])
 
-  // 监听授权成功
-  const continueAfterApprove = useCallback(async () => {
-    if (approveSuccess && approveHash) {
+  // 监听授权成功后继续充值
+  useEffect(() => {
+    if (approveSuccess && approveHash && state.step === 'approving' && pendingDepositAmount) {
       setState((prev) => ({
         ...prev,
         step: 'approved',
         txHash: approveHash,
       }))
 
-      // 重新检查授权额度
-      await refetchAllowance()
-
-      // 继续存入
-      const amountInput = document.querySelector<HTMLInputElement>('[data-deposit-amount]')?.value
-      if (amountInput) {
-        const amountWei = parseUnits(amountInput, USDC_DECIMALS)
+      // 重新检查授权额度后继续存入
+      refetchAllowance().then(() => {
+        const amountWei = parseUnits(pendingDepositAmount, USDC_DECIMALS)
         setState((prev) => ({ ...prev, step: 'depositing' }))
         depositToVault({
           address: CONTRACT_ADDRESSES.VAULT as `0x${string}`,
@@ -128,13 +126,14 @@ export function useDeposit() {
           functionName: 'deposit',
           args: [amountWei],
         })
-      }
+        setPendingDepositAmount(null)
+      })
     }
-  }, [approveSuccess, approveHash, depositToVault, refetchAllowance])
+  }, [approveSuccess, approveHash, state.step, pendingDepositAmount, depositToVault, refetchAllowance])
 
   // 监听存入成功
-  const handleDepositSuccess = useCallback(async () => {
-    if (depositSuccess && depositHash) {
+  useEffect(() => {
+    if (depositSuccess && depositHash && state.step === 'depositing') {
       setState((prev) => ({
         ...prev,
         step: 'confirmed',
@@ -142,9 +141,21 @@ export function useDeposit() {
       }))
 
       // 刷新余额
-      await queryClient.invalidateQueries({ queryKey: BALANCE_QUERY_KEY })
+      queryClient.invalidateQueries({ queryKey: BALANCE_QUERY_KEY })
     }
-  }, [depositSuccess, depositHash, queryClient])
+  }, [depositSuccess, depositHash, state.step, queryClient])
+
+  // 监听授权成功
+  const continueAfterApprove = useCallback(async () => {
+    // 保留此函数以兼容 deposit 页面的 useEffect
+    // 实际逻辑已移到上面的 useEffect 中
+  }, [])
+
+  // 监听存入成功
+  const handleDepositSuccess = useCallback(async () => {
+    // 保留此函数以兼容 deposit 页面的 useEffect
+    // 实际逻辑已移到上面的 useEffect 中
+  }, [])
 
   // 重置状态
   const reset = useCallback(() => {
@@ -154,6 +165,7 @@ export function useDeposit() {
       txHash: null,
       allowance: 0n,
     })
+    setPendingDepositAmount(null)
   }, [])
 
   return {

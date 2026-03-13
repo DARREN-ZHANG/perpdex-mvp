@@ -1,8 +1,17 @@
 'use client'
 
 import { useState } from 'react'
+import { formatUnits } from 'viem'
 import { useTransactions } from '@/hooks/use-transactions'
 import type { Transaction, TransactionType } from '@/types/api'
+
+const USDC_DECIMALS = 6
+
+// 将原始值转换为可读的 USDC 金额
+function formatUSDC(value: string | undefined): string {
+  if (!value) return '0'
+  return formatUnits(BigInt(value), USDC_DECIMALS)
+}
 
 const TYPE_FILTERS = [
   { label: '全部', value: 'all' },
@@ -274,7 +283,7 @@ export default function HistoryPage() {
                       </span>
                     </td>
                     <td className="px-4 py-4 text-right font-mono font-medium">
-                      {parseFloat(tx.amount).toFixed(6)}
+                      {formatUSDC(tx.amount)}
                     </td>
                     <td className="px-4 py-4 text-center">
                       <span

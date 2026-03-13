@@ -1,12 +1,21 @@
 'use client'
 
 import { useState } from 'react'
+import { formatUnits } from 'viem'
 import { useBalance } from '@/hooks/use-balance'
 import { useOrderEstimate } from '@/hooks/use-order-estimate'
 import { useOrders } from '@/hooks/use-orders'
 import { LeverageSlider } from './leverage-slider'
 import { Loader2 } from 'lucide-react'
 import type { OrderSide } from '@/types/trading'
+
+const USDC_DECIMALS = 6
+
+// 将原始值转换为可读的 USDC 金额
+function formatBalance(value: string | undefined): number {
+  if (!value) return 0
+  return parseFloat(formatUnits(BigInt(value), USDC_DECIMALS))
+}
 
 export function OrderForm() {
   const [side, setSide] = useState<OrderSide>('LONG')
@@ -22,7 +31,7 @@ export function OrderForm() {
     side: side === 'LONG' ? 'long' : 'short',
   })
 
-  const availableBalance = balance ? parseFloat(balance.availableBalance) : 0
+  const availableBalance = formatBalance(balance?.availableBalance)
 
   const handleSubmit = async () => {
     if (!margin || Number(margin) <= 0) return

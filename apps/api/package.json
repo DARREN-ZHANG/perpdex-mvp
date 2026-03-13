@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "dotenv -e ../../.env.local -c development -- tsx watch src/index.ts",
+    "dev": "cross-env DATABASE_URL=postgresql://perpdex:perpdex_password@localhost:5432/perpdex?schema=public REDIS_URL=redis://localhost:6379 JWT_SECRET=dev-secret-change-in-production CHAIN_ID=31337 RPC_URL=http://localhost:8545 VAULT_CONTRACT_ADDRESS=0xe7f1725e7734ce288f8367e1bb143e90bb3f0512 tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "vitest run",

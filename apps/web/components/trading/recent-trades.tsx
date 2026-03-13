@@ -1,10 +1,18 @@
 'use client'
 
 import { useState } from 'react'
+import { formatUnits } from 'viem'
 import { useTransactions } from '@/hooks/use-transactions'
 import { Loader2 } from 'lucide-react'
 
+const USDC_DECIMALS = 6
 const TABS = ['最近交易', '委托订单', '资金流水']
+
+// 将原始值转换为可读的 USDC 金额
+function formatUSDC(value: string | undefined): string {
+  if (!value) return '0'
+  return formatUnits(BigInt(value), USDC_DECIMALS)
+}
 
 export function RecentTrades() {
   const [activeTab, setActiveTab] = useState(0)
@@ -113,7 +121,7 @@ export function RecentTrades() {
                 {getTypeLabel(tx.type)}
               </span>
               <span className="font-mono font-medium">
-                {parseFloat(tx.amount).toLocaleString()} USDC
+                {parseFloat(formatUSDC(tx.amount)).toLocaleString('en-US', { minimumFractionDigits: 2 })} USDC
               </span>
               <span className={`text-xs px-2 py-0.5 rounded-full w-fit ${getStatusClass(tx.status)}`}>
                 {tx.status === 'CONFIRMED' ? '已确认' : tx.status === 'PENDING' ? '处理中' : '失败'}

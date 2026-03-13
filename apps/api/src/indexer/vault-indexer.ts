@@ -61,7 +61,7 @@ export class VaultIndexer {
 
   constructor() {
     this.vaultAddress = config.external.vaultContractAddress as Address;
-    this.cursorManager = new BlockCursorManager();
+    this.cursorManager = new BlockCursorManager(config.external.chainId);
     this.eventHandler = new EventHandler();
 
     const chain = getChain(config.external.chainId);
