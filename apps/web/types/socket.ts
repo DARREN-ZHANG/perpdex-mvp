@@ -23,29 +23,27 @@ export interface CandleData {
 
 // 仓位更新数据
 export interface PositionUpdate {
-  positionId: string
-  userId: string
-  symbol: string
-  side: 'LONG' | 'SHORT'
-  size: string
-  entryPrice: string
-  markPrice: string
-  margin: string
-  leverage: number
-  unrealizedPnl: string
-  realizedPnl: string
-  liquidationPrice: string
-  updatedAt: string
+  type: 'POSITION_CREATED' | 'POSITION_CLOSED' | 'POSITION_LIQUIDATED'
+  position: {
+    id: string
+    symbol: string
+    side?: 'LONG' | 'SHORT'
+    positionSize?: string
+    entryPrice?: string
+    markPrice?: string
+    unrealizedPnl?: string
+    realizedPnl?: string
+    liquidationPrice?: string
+    status: 'OPEN' | 'CLOSED' | 'LIQUIDATED'
+    updatedAt?: string
+  }
 }
 
 // 余额更新数据
 export interface BalanceUpdate {
-  userId: string
-  asset: string
-  walletBalance: string
-  orderMargin: string
-  positionMargin: string
   availableBalance: string
+  lockedBalance: string
+  totalBalance: string
   updatedAt: string
 }
 

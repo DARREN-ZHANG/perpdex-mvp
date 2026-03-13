@@ -30,6 +30,11 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                   border: '1px solid #374151',
                   color: '#f3f4f6',
                 },
+                classNames: {
+                  toast: 'pr-12',
+                  closeButton:
+                    '!right-3 !top-3 !left-auto !translate-x-0 !translate-y-0 !border-0 !bg-pro-gray-700 !text-pro-gray-100 hover:!bg-pro-gray-600',
+                },
               }}
             />
           </Web3Provider>

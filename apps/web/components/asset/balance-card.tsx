@@ -48,7 +48,7 @@ export function BalanceSummary() {
   const equity = formatBalance(balance?.equity)
   const availableBalance = formatBalance(balance?.availableBalance)
   const lockedBalance = formatBalance(balance?.lockedBalance)
-  const totalValue = equity + availableBalance
+  const totalValue = equity || availableBalance + lockedBalance
 
   // 计算未实现盈亏
   const unrealizedPnl =

@@ -154,20 +154,6 @@ export class TradeEngine {
         throw new AppError("INSUFFICIENT_BALANCE", "Insufficient balance");
       }
 
-      const existingPosition = await tx.position.findFirst({
-        where: {
-          userId,
-          symbol: symbol as "BTC",
-          status: "OPEN"
-        }
-      });
-
-      if (existingPosition) {
-        throw new AppError("CONFLICT", "Position already exists for this symbol", {
-          statusCode: 409
-        });
-      }
-
       // 锁定保证金
       const updatedAccount = await tx.account.update({
         where: { id: account!.id },

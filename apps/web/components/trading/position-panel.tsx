@@ -6,7 +6,14 @@ import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 export function PositionPanel() {
-  const { positions, closePosition, isLoading, isClosing } = usePositions()
+  const {
+    positions,
+    closePosition,
+    closeAllPositions,
+    isLoading,
+    isClosing,
+    isClosingAll,
+  } = usePositions()
   const { data: priceData } = useBinancePrice('BTCUSDT')
 
   if (isLoading) {
@@ -33,9 +40,42 @@ export function PositionPanel() {
         <span className="text-xs font-semibold text-pro-gray-800 uppercase tracking-wider">
           当前仓位
         </span>
-        <span className="text-xs text-pro-accent-cyan cursor-pointer hover:underline">
-          查看全部
-        </span>
+        <button
+          type="button"
+          onClick={async () => {
+            const result = await closeAllPositions()
+
+            if (result.success) {
+              toast.success('全部平仓成功', {
+                description:
+                  result.closedCount > 0
+                    ? `已平仓 ${result.closedCount} 个仓位`
+                    : '当前没有可平仓位',
+                duration: 3000,
+              })
+              return
+            }
+
+            toast.error('全部平仓未完成', {
+              description:
+                result.closedCount > 0
+                  ? `已平仓 ${result.closedCount} 个，失败 ${result.failedCount} 个`
+                  : result.error || '请稍后重试',
+              duration: 5000,
+            })
+          }}
+          disabled={isClosingAll}
+          className="inline-flex items-center text-xs text-pro-accent-red hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isClosingAll ? (
+            <span className="inline-flex items-center gap-1.5">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              全部平仓中...
+            </span>
+          ) : (
+            '全部平仓'
+          )}
+        </button>
       </div>
 
       {positions.map((position) => {
@@ -118,13 +158,13 @@ export function PositionPanel() {
                   duration: 5000,
                 })
               }}
-              disabled={isClosing(position.id)}
+              disabled={isClosing(position.id) || isClosingAll}
               className="w-full py-2 border border-pro-gray-200 rounded-md text-sm text-pro-gray-500 hover:bg-pro-gray-50 hover:border-pro-accent-red hover:text-pro-accent-red transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {isClosing(position.id) ? (
+              {isClosing(position.id) || isClosingAll ? (
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  平仓中...
+                  {isClosingAll ? '全部平仓中...' : '平仓中...'}
                 </span>
               ) : (
                 '平仓'

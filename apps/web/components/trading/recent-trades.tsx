@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type UIEvent } from 'react'
 import { formatUnits } from 'viem'
 import { Loader2 } from 'lucide-react'
 import { useOrderHistory } from '@/hooks/use-order-history'
@@ -34,15 +34,46 @@ function getOrderLabel(order: OrderHistoryItem): string {
 
 export function RecentTrades() {
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>('订单记录')
-  const { orders, isLoading: isOrdersLoading } = useOrderHistory({ limit: 5 })
-  const { transactions, isLoading: isTransactionsLoading } = useTransactions({ limit: 20 })
+  const {
+    orders,
+    isLoading: isOrdersLoading,
+    fetchNextPage: fetchNextOrdersPage,
+    hasNextPage: hasNextOrdersPage,
+    isFetchingNextPage: isFetchingNextOrdersPage,
+  } = useOrderHistory({ limit: 20 })
+  const {
+    transactions,
+    isLoading: isTransactionsLoading,
+    fetchNextPage: fetchNextTransactionsPage,
+    hasNextPage: hasNextTransactionsPage,
+    isFetchingNextPage: isFetchingNextTransactionsPage,
+  } = useTransactions({ limit: 20 })
 
-  const fundTransactions = transactions
-    .filter((tx) => tx.type === 'DEPOSIT' || tx.type === 'WITHDRAW')
-    .slice(0, 5)
+  const fundTransactions = transactions.filter(
+    (tx) => tx.type === 'DEPOSIT' || tx.type === 'WITHDRAW'
+  )
 
   const isOrderTab = activeTab === '订单记录'
   const isLoading = isOrderTab ? isOrdersLoading : isTransactionsLoading
+  const isFetchingMore = isOrderTab ? isFetchingNextOrdersPage : isFetchingNextTransactionsPage
+  const hasNextPage = isOrderTab ? hasNextOrdersPage : hasNextTransactionsPage
+
+  const handleScroll = async (event: UIEvent<HTMLDivElement>) => {
+    const element = event.currentTarget
+    const distanceToBottom =
+      element.scrollHeight - element.scrollTop - element.clientHeight
+
+    if (distanceToBottom > 48 || isFetchingMore || !hasNextPage) {
+      return
+    }
+
+    if (isOrderTab) {
+      await fetchNextOrdersPage()
+      return
+    }
+
+    await fetchNextTransactionsPage()
+  }
 
   const getFundTypeClass = (type: string) => {
     switch (type) {
@@ -133,7 +164,7 @@ export function RecentTrades() {
       </div>
 
       {isOrderTab ? (
-        <div className="grid grid-cols-[96px_92px_1fr_110px_90px] gap-2 px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
+        <div className="grid grid-cols-[96px_92px_1fr_110px_90px] items-center gap-2 px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
           <span>时间</span>
           <span>方向</span>
           <span>数量 / 价格</span>
@@ -141,7 +172,7 @@ export function RecentTrades() {
           <span>状态</span>
         </div>
       ) : (
-        <div className="grid grid-cols-[100px_1fr_1fr_80px] gap-2 px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
+        <div className="grid grid-cols-[100px_1fr_1fr_80px] items-center gap-2 px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
           <span>时间</span>
           <span>类型</span>
           <span>数量</span>
@@ -149,7 +180,7 @@ export function RecentTrades() {
         </div>
       )}
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto" onScroll={handleScroll}>
         {isLoading ? (
           <div className="flex justify-center py-8">
             <Loader2 className="w-5 h-5 animate-spin text-pro-gray-400" />
@@ -160,7 +191,7 @@ export function RecentTrades() {
           orders.map((order) => (
             <div
               key={order.id}
-              className="grid grid-cols-[96px_92px_1fr_110px_90px] gap-2 px-4 py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
+              className="grid grid-cols-[96px_92px_1fr_110px_90px] items-center gap-2 px-4 py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
             >
               <span className="text-pro-gray-500 font-mono text-xs">{formatTime(order.createdAt)}</span>
               <span className={`font-medium ${order.side === 'LONG' ? 'text-pro-accent-green' : 'text-pro-accent-red'}`}>
@@ -198,7 +229,7 @@ export function RecentTrades() {
           fundTransactions.map((tx) => (
             <div
               key={tx.id}
-              className="grid grid-cols-[100px_1fr_1fr_80px] gap-2 px-4 py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
+              className="grid grid-cols-[100px_1fr_1fr_80px] items-center gap-2 px-4 py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
             >
               <span className="text-pro-gray-500 font-mono text-xs">{formatTime(tx.createdAt)}</span>
               <span className={`font-medium ${getFundTypeClass(tx.type)}`}>
@@ -216,6 +247,12 @@ export function RecentTrades() {
             </div>
           ))
         )}
+
+        {!isLoading && isFetchingMore ? (
+          <div className="flex justify-center py-3">
+            <Loader2 className="w-4 h-4 animate-spin text-pro-gray-400" />
+          </div>
+        ) : null}
       </div>
     </div>
   )

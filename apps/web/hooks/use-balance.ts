@@ -12,13 +12,16 @@ import type { BalanceUpdate } from '@/types/socket'
 const BALANCE_QUERY_KEY = ['balance']
 
 // 将 BalanceUpdate 转换为 AccountBalance
-function convertBalanceUpdate(update: BalanceUpdate): AccountBalance {
+function convertBalanceUpdate(
+  update: BalanceUpdate,
+  userId: string
+): AccountBalance {
   return {
-    userId: update.userId,
-    asset: update.asset as 'USDC',
+    userId,
+    asset: 'USDC',
     availableBalance: update.availableBalance,
-    lockedBalance: (parseFloat(update.orderMargin) + parseFloat(update.positionMargin)).toString(),
-    equity: update.walletBalance,
+    lockedBalance: update.lockedBalance,
+    equity: update.totalBalance,
     updatedAt: update.updatedAt,
   }
 }
@@ -61,7 +64,7 @@ export function useBalance() {
       // 使用 WebSocket 数据更新缓存
       queryClient.setQueryData<AccountBalance>(
         BALANCE_QUERY_KEY,
-        convertBalanceUpdate(data)
+        convertBalanceUpdate(data, user.id)
       )
     })
 

@@ -96,7 +96,17 @@ async function closePosition(positionId: string): Promise<void> {
 export function usePositions() {
   const queryClient = useQueryClient()
   const [closingPositionId, setClosingPositionId] = useState<string | null>(null)
+  const [isClosingAll, setIsClosingAll] = useState(false)
   const { user } = useAuth()
+
+  const refreshTradingQueries = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['positions'] }),
+      queryClient.invalidateQueries({ queryKey: BALANCE_QUERY_KEY }),
+      queryClient.invalidateQueries({ queryKey: [ORDER_HISTORY_QUERY_KEY] }),
+      queryClient.invalidateQueries({ queryKey: [TRANSACTIONS_QUERY_KEY] }),
+    ])
+  }
 
   const {
     data: positions = [],
@@ -116,29 +126,13 @@ export function usePositions() {
 
     // 确保 Socket 已连接
     const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : undefined
-    const socket = socketClient.connect(token ?? undefined)
+    socketClient.connect(token ?? undefined)
 
     // 订阅仓位更新
     const unsubscribe = socketClient.subscribePositions(
       user.id,
-      (data: PositionUpdate) => {
-        queryClient.setQueryData(['positions'], (old: Position[] | undefined) => {
-          const existingPositions = old ?? []
-
-          // 根据 PositionUpdate 更新现有仓位
-          return existingPositions.map((pos) => {
-            if (pos.id === data.positionId) {
-              return {
-                ...pos,
-                markPrice: data.markPrice,
-                unrealizedPnl: data.unrealizedPnl,
-                liquidationPrice: data.liquidationPrice,
-                updatedAt: data.updatedAt,
-              }
-            }
-            return pos
-          })
-        })
+      (_data: PositionUpdate) => {
+        void refreshTradingQueries()
       }
     )
 
@@ -149,14 +143,8 @@ export function usePositions() {
 
   const closeMutation = useMutation({
     mutationFn: closePosition,
-    onSuccess: () => {
-      // 刷新仓位列表
-      queryClient.invalidateQueries({ queryKey: ['positions'] })
-      // 刷新余额
-      queryClient.invalidateQueries({ queryKey: BALANCE_QUERY_KEY })
-      // 刷新订单记录和资金流水
-      queryClient.invalidateQueries({ queryKey: [ORDER_HISTORY_QUERY_KEY] })
-      queryClient.invalidateQueries({ queryKey: [TRANSACTIONS_QUERY_KEY] })
+    onSuccess: async () => {
+      await refreshTradingQueries()
     },
   })
 
@@ -172,6 +160,57 @@ export function usePositions() {
       console.error('平仓失败:', error)
       return { success: false, error: message }
     } finally {
+      setClosingPositionId(null)
+    }
+  }
+
+  const handleCloseAllPositions = async (): Promise<{
+    success: boolean
+    closedCount: number
+    failedCount: number
+    error?: string
+  }> => {
+    if (positions.length === 0) {
+      return { success: true, closedCount: 0, failedCount: 0 }
+    }
+
+    setIsClosingAll(true)
+
+    try {
+      let closedCount = 0
+      let failedCount = 0
+      let firstError: unknown
+
+      for (const position of positions) {
+        try {
+          await closeMutation.mutateAsync(position.id)
+          closedCount += 1
+        } catch (error) {
+          failedCount += 1
+          if (!firstError) {
+            firstError = error
+          }
+        }
+      }
+
+      await refreshTradingQueries()
+
+      if (failedCount > 0) {
+        return {
+          success: false,
+          closedCount,
+          failedCount,
+          error: firstError instanceof Error ? firstError.message : '部分仓位平仓失败',
+        }
+      }
+
+      return {
+        success: true,
+        closedCount,
+        failedCount: 0,
+      }
+    } finally {
+      setIsClosingAll(false)
       setClosingPositionId(null)
     }
   }
@@ -193,8 +232,10 @@ export function usePositions() {
     error: error instanceof Error ? error.message : '未知错误',
     refetch,
     closePosition: handleClosePosition,
+    closeAllPositions: handleCloseAllPositions,
     isClosing: (positionId: string) => closingPositionId === positionId,
     isClosingAny: closingPositionId !== null,
+    isClosingAll,
     totalUnrealizedPnl,
     totalMargin,
   }
