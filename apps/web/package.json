@@ -9,7 +9,12 @@
     "lint": "eslint \"app/**/*.{ts,tsx}\" \"next.config.ts\"",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "format": "eslint --fix \"app/**/*.{ts,tsx}\" \"next.config.ts\""
+    "format": "eslint --fix \"app/**/*.{ts,tsx}\" \"next.config.ts\"",
+    "test:e2e": "playwright test e2e/specs",
+    "test:e2e:ui": "playwright test e2e/specs --ui",
+    "test:e2e:debug": "playwright test e2e/specs --debug",
+    "test:e2e:headed": "playwright test e2e/specs --headed",
+    "test:e2e:report": "playwright show-report playwright-report"
   },
   "dependencies": {
     "@perpdex/shared": "workspace:*",
@@ -24,14 +29,17 @@
     "react-dom": "^19.1.0",
     "siwe": "^3.0.0",
     "socket.io-client": "^4.8.3",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "viem": "^2.47.2",
     "wagmi": "^3.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@types/react": "^19.1.2",
     "@types/react-dom": "^19.1.2",
     "autoprefixer": "^10.4.27",
+    "msw": "^2.12.10",
     "tailwindcss": "^3.4.19",
     "tailwindcss-animate": "^1.0.7",
     "vitest": "^3.1.1"

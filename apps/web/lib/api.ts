@@ -125,7 +125,7 @@ class ApiClient {
         }
 
         // 解析响应
-        const data: ApiResponse<T> = await response.json()
+        const data = await response.json() as ApiResponse<T>
 
         if (!response.ok) {
           return {
@@ -138,7 +138,11 @@ class ApiClient {
           }
         }
 
-        return data
+        // 确保成功响应包含 success 字段
+        return {
+          success: true,
+          ...data,
+        }
       } catch (error) {
         lastError = error as Error
 
@@ -223,11 +227,17 @@ class ApiClient {
   // 验证签名并登录
   async verifySignature(
     message: string,
-    signature: string
+    signature: string,
+    walletAddress: string,
+    chainId: number,
+    nonce: string
   ): Promise<ApiResponse<AuthTokens & { user: User }>> {
     return this.post<AuthTokens & { user: User }>('/api/auth/verify', {
       message,
       signature,
+      walletAddress,
+      chainId,
+      nonce,
     })
   }
 

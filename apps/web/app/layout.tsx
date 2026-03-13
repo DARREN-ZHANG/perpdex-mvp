@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Toaster } from "sonner";
 import { Web3Provider } from "@/config/wagmi";
 import { Header } from "@/components/layout/header";
 import { Providers } from "./providers";
@@ -19,6 +20,18 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <main className="min-h-[calc(100vh-64px)]">
               {children}
             </main>
+            <Toaster
+              position="top-right"
+              richColors
+              closeButton
+              toastOptions={{
+                style: {
+                  background: '#1f2937',
+                  border: '1px solid #374151',
+                  color: '#f3f4f6',
+                },
+              }}
+            />
           </Web3Provider>
         </Providers>
       </body>

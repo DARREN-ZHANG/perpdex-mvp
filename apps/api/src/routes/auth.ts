@@ -20,7 +20,7 @@ function getJwtUser(request: FastifyRequest): JwtUser | undefined {
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   const authService = new AuthService(app);
 
-  // GET /api/auth/challenge - 获取 SIWE 挑战消息
+  // GET /api/auth/challenge - 获取 SIWE 挑战消息（兼容旧版）
   app.get(AUTH_CHALLENGE_PATH, async (request) => {
     const query = request.query as { walletAddress: string; chainId?: string };
 
@@ -30,6 +30,24 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     const result = await authService.createChallenge({
       walletAddress: query.walletAddress,
+      chainId
+    });
+
+    return {
+      data: result,
+      error: null,
+      meta: { requestId: request.id }
+    };
+  });
+
+  // POST /api/auth/challenge - 获取 SIWE 挑战消息
+  app.post(AUTH_CHALLENGE_PATH, async (request) => {
+    const body = request.body as { address: string; chainId?: number };
+
+    const chainId = body.chainId ?? config.siwe.chainId;
+
+    const result = await authService.createChallenge({
+      walletAddress: body.address,
       chainId
     });
 
@@ -89,6 +107,53 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
       return {
         data: result,
+        error: null,
+        meta: { requestId: request.id }
+      };
+    }
+  );
+
+  // GET /api/auth/me - 获取当前用户信息
+  app.get(
+    "/api/auth/me",
+    {
+      preHandler: [optionalAuth]
+    },
+    async (request) => {
+      const user = getJwtUser(request);
+
+      if (!user) {
+        return {
+          data: null,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: '未登录'
+          },
+          meta: { requestId: request.id }
+        };
+      }
+
+      const result = await authService.getSession(user.id);
+
+      if (!result.authenticated || !result.user) {
+        return {
+          data: null,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: '未登录'
+          },
+          meta: { requestId: request.id }
+        };
+      }
+
+      return {
+        data: {
+          id: result.user.id,
+          address: result.user.walletAddress,
+          lastLoginAt: result.user.lastLoginAt,
+          createdAt: null,
+          updatedAt: null
+        },
         error: null,
         meta: { requestId: request.id }
       };

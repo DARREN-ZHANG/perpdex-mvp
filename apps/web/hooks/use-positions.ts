@@ -75,11 +75,11 @@ export function getRiskLevelText(riskLevel: Position['riskLevel']): string {
 
 // 获取仓位列表
 async function fetchPositions(): Promise<Position[]> {
-  const response = await api.get<Position[]>('/api/user/positions')
+  const response = await api.get<{ items: Position[] }>('/api/user/positions')
   if (!response.success) {
     throw new Error(response.error?.message || '获取仓位列表失败')
   }
-  return response.data || []
+  return response.data?.items || []
 }
 
 // 平仓

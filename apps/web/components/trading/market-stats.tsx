@@ -1,6 +1,6 @@
 'use client'
 
-import { useMarket } from '@/hooks/use-market'
+import { useBinancePrice } from '@/hooks/use-binance-price'
 
 interface StatItemProps {
   label: string
@@ -23,10 +23,23 @@ function StatItem({ label, value, change, isPercentage }: StatItemProps) {
   )
 }
 
-export function MarketStats() {
-  const { marketData } = useMarket('BTC')
+function formatVolume(volume: number): string {
+  if (volume >= 1_000_000_000) {
+    return `${(volume / 1_000_000_000).toFixed(2)}B`
+  }
+  if (volume >= 1_000_000) {
+    return `${(volume / 1_000_000).toFixed(2)}M`
+  }
+  if (volume >= 1_000) {
+    return `${(volume / 1_000).toFixed(2)}K`
+  }
+  return volume.toFixed(2)
+}
 
-  if (!marketData) {
+export function MarketStats() {
+  const { data: priceData, isLoading } = useBinancePrice('BTCUSDT')
+
+  if (isLoading || !priceData) {
     return (
       <div className="grid grid-cols-5 gap-px bg-pro-gray-100">
         {[...Array(5)].map((_, i) => (
@@ -39,32 +52,29 @@ export function MarketStats() {
     )
   }
 
-  const markPrice = parseFloat(marketData.markPrice)
-  const indexPrice = parseFloat(marketData.indexPrice)
-
   return (
     <div className="grid grid-cols-5 gap-px bg-pro-gray-100">
       <StatItem
         label="标记价格"
-        value={markPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        value={priceData.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
       />
       <StatItem
         label="指数价格"
-        value={indexPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+        value={priceData.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
       />
       <StatItem
         label="24h 涨跌"
         value=""
-        change={marketData.change24h}
+        change={priceData.changePercent24h.toString()}
         isPercentage
       />
       <StatItem
         label="24h 最高"
-        value="—"
+        value={priceData.high24h.toLocaleString('en-US', { minimumFractionDigits: 2 })}
       />
       <StatItem
         label="24h 成交量"
-        value="—"
+        value={formatVolume(priceData.volume24h)}
       />
     </div>
   )

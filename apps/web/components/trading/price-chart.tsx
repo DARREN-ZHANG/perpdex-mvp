@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useMarket } from '@/hooks/use-market'
+import { useBinancePrice } from '@/hooks/use-binance-price'
 
 const TIMEFRAMES = [
   { label: '15m', value: '15' },
@@ -13,7 +13,7 @@ const TIMEFRAMES = [
 export function PriceChart() {
   const chartRef = useRef<HTMLDivElement>(null)
   const [timeframe, setTimeframe] = useState('15')
-  const { marketData } = useMarket('BTC')
+  const { data: priceData } = useBinancePrice('BTCUSDT')
 
   useEffect(() => {
     if (!chartRef.current) return
@@ -61,9 +61,8 @@ export function PriceChart() {
     }
   }, [timeframe])
 
-  const change24h = marketData?.change24h ? parseFloat(marketData.change24h) : 0
-  const isPositive = change24h >= 0
-  const markPrice = marketData?.markPrice ? parseFloat(marketData.markPrice) : 0
+  const changePercent24h = priceData?.changePercent24h ?? 0
+  const isPositive = changePercent24h >= 0
 
   return (
     <div className="flex flex-col h-full">
@@ -89,11 +88,11 @@ export function PriceChart() {
 
       {/* Chart Area */}
       <div className="flex-1 relative">
-        {marketData && markPrice > 0 && (
+        {priceData && priceData.price > 0 && (
           <div className="absolute top-4 left-4 z-10 bg-white/95 rounded-lg shadow-float p-3">
             <div className="text-sm text-pro-gray-500 mb-1">BTC / USD</div>
             <div className="text-2xl font-bold font-mono text-pro-gray-800">
-              {markPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              {priceData.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>
             <div
               className={`text-sm font-medium mt-1 ${
@@ -101,7 +100,7 @@ export function PriceChart() {
               }`}
             >
               {isPositive ? '+' : ''}
-              {change24h.toFixed(2)}%
+              {changePercent24h.toFixed(2)}%
             </div>
           </div>
         )}

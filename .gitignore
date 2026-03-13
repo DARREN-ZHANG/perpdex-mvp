@@ -13,3 +13,7 @@ out
 .env.*.local
 *.tsbuildinfo
 .superpowers
+
+apps/*/e2e
+apps/*/playwright-report
+apps/*/test-results
