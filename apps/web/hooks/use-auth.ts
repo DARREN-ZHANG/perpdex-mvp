@@ -1,13 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
 import { useAccount, useDisconnect, useSignMessage } from 'wagmi'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api, AUTH_TOKEN_CHANGE_EVENT } from '@/lib/api'
 import type { AuthState, User } from '@/types/api'
 
-const AUTH_SCOPED_QUERY_KEYS = [['balance'], ['transactions']] as const
+const AUTH_SCOPED_QUERY_KEYS = [['balance'], ['transactions'], ['positions'], ['order-history']] as const
 
 type AuthStoreSnapshot = AuthState
 
@@ -162,6 +162,7 @@ export function useAuth() {
   const { address, isConnected, chainId } = useAccount()
   const { signMessageAsync } = useSignMessage()
   const { disconnectAsync } = useDisconnect()
+  const hasEverConnectedRef = useRef(false)
 
   useEffect(() => {
     const handleTokenChange = () => {
@@ -181,6 +182,11 @@ export function useAuth() {
 
   useEffect(() => {
     if (isConnected && address) {
+      hasEverConnectedRef.current = true
+      return
+    }
+
+    if (!hasEverConnectedRef.current) {
       return
     }
 

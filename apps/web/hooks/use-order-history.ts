@@ -2,6 +2,7 @@
 
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useAuth } from './use-auth'
 
 const ORDER_HISTORY_QUERY_KEY = 'order-history'
 
@@ -11,6 +12,7 @@ interface UseOrderHistoryOptions {
 
 export function useOrderHistory(options: UseOrderHistoryOptions = {}) {
   const { limit = 20 } = options
+  const { isAuthenticated } = useAuth()
 
   const {
     data,
@@ -37,6 +39,7 @@ export function useOrderHistory(options: UseOrderHistoryOptions = {}) {
     getNextPageParam: (lastPage) => lastPage.nextCursor,
     initialPageParam: undefined as string | undefined,
     staleTime: 30000,
+    enabled: isAuthenticated,
   })
 
   const orders = data?.pages.flatMap((page) => page.items) ?? []

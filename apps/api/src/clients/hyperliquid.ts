@@ -38,20 +38,7 @@ export class HyperliquidClient {
    * 初始化 Hyperliquid 客户端
    */
   private initializeClient(): void {
-    const privateKey = process.env.HYPERLIQUID_PRIVATE_KEY;
-
-    if (!privateKey) {
-      logger.warn({
-        msg: "HYPERLIQUID_PRIVATE_KEY not set, client will operate in mock mode"
-      });
-      return;
-    }
-
     try {
-      // 从私钥创建 viem 账户
-      const account = privateKeyToAccount(privateKey as `0x${string}`);
-      this.walletAddress = account.address;
-
       // 创建 HTTP 传输层
       const transport = new hl.HttpTransport({
         isTestnet: this.isTestnet
@@ -61,6 +48,19 @@ export class HyperliquidClient {
       this.publicClient = new hl.PublicClient({
         transport
       });
+
+      const privateKey = process.env.HYPERLIQUID_PRIVATE_KEY;
+
+      if (!privateKey) {
+        logger.warn({
+          msg: "HYPERLIQUID_PRIVATE_KEY not set, wallet trading is disabled but public market data remains available"
+        });
+        return;
+      }
+
+      // 从私钥创建 viem 账户
+      const account = privateKeyToAccount(privateKey as `0x${string}`);
+      this.walletAddress = account.address;
 
       // 创建钱包客户端（用于交易）
       this.walletClient = new hl.WalletClient({
@@ -262,7 +262,7 @@ export class HyperliquidClient {
    */
   async getMarkPrice(coin: string): Promise<string> {
     if (!this.publicClient) {
-      return "50000";
+      throw new Error("Hyperliquid public client is not initialized");
     }
 
     try {
@@ -270,21 +270,13 @@ export class HyperliquidClient {
       const result = await this.publicClient.metaAndAssetCtxs();
 
       if (!result || !Array.isArray(result) || result.length < 2) {
-        logger.warn({
-          msg: "Invalid response from Hyperliquid meta API",
-          fallback: "50000"
-        });
-        return "50000";
+        throw new Error("Invalid response from Hyperliquid meta API");
       }
 
       const [meta, assetCtxs] = result;
 
       if (!meta?.universe || !Array.isArray(assetCtxs)) {
-        logger.warn({
-          msg: "Invalid data structure from Hyperliquid",
-          fallback: "50000"
-        });
-        return "50000";
+        throw new Error("Invalid data structure from Hyperliquid");
       }
 
       // 查找币种索引
@@ -296,21 +288,14 @@ export class HyperliquidClient {
         return assetCtxs[coinIndex].markPx;
       }
 
-      logger.warn({
-        msg: "Coin not found in Hyperliquid universe",
-        coin,
-        fallback: "50000"
-      });
-
-      return "50000";
+      throw new Error(`Coin ${coin} not found in Hyperliquid universe`);
     } catch (error) {
       logger.error({
         msg: "Failed to fetch mark price from Hyperliquid",
         coin,
-        error: error instanceof Error ? error.message : "Unknown error",
-        fallback: "50000"
+        error: error instanceof Error ? error.message : "Unknown error"
       });
-      return "50000";
+      throw error;
     }
   }
 

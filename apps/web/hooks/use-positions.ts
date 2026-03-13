@@ -3,6 +3,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState, useEffect } from 'react'
+import { formatUnits } from 'viem'
 import { api } from '@/lib/api'
 import { socketClient } from '@/lib/socket'
 import { useAuth } from './use-auth'
@@ -11,6 +12,18 @@ import type { PositionUpdate } from '@/types/socket'
 import { BALANCE_QUERY_KEY } from './use-balance'
 import { ORDER_HISTORY_QUERY_KEY } from './use-order-history'
 import { TRANSACTIONS_QUERY_KEY } from './use-transactions'
+
+const USDC_DECIMALS = 6
+
+export function parseUsdcBaseUnits(amount: string | undefined): number {
+  if (!amount) return 0
+
+  try {
+    return Number.parseFloat(formatUnits(BigInt(amount), USDC_DECIMALS))
+  } catch {
+    return 0
+  }
+}
 
 // 格式化金额
 export function formatAmount(amount: string, decimals: number = 2): string {
@@ -46,6 +59,26 @@ export function formatPnL(pnl: string): {
     maximumFractionDigits: 2,
   })
   return { value: absValue, isPositive, isNegative }
+}
+
+export function calculatePositionUnrealizedPnl(
+  position: Pick<Position, 'side' | 'positionSize' | 'entryPrice' | 'unrealizedPnl'>,
+  markPrice?: number
+): number {
+  if (!markPrice || !Number.isFinite(markPrice) || markPrice <= 0) {
+    return parseFloat(position.unrealizedPnl || '0')
+  }
+
+  const size = parseFloat(position.positionSize || '0')
+  const entryPrice = parseFloat(position.entryPrice || '0')
+
+  if (!Number.isFinite(size) || !Number.isFinite(entryPrice)) {
+    return parseFloat(position.unrealizedPnl || '0')
+  }
+
+  return position.side === 'LONG'
+    ? (markPrice - entryPrice) * size
+    : (entryPrice - markPrice) * size
 }
 
 // 获取风险等级颜色
@@ -97,7 +130,7 @@ export function usePositions() {
   const queryClient = useQueryClient()
   const [closingPositionId, setClosingPositionId] = useState<string | null>(null)
   const [isClosingAll, setIsClosingAll] = useState(false)
-  const { user } = useAuth()
+  const { user, isAuthenticated } = useAuth()
 
   const refreshTradingQueries = async () => {
     await Promise.all([
@@ -118,6 +151,7 @@ export function usePositions() {
     queryKey: ['positions'],
     queryFn: fetchPositions,
     staleTime: 30000, // 30秒缓存时间
+    enabled: isAuthenticated,
   })
 
   // WebSocket 订阅仓位实时更新
@@ -222,7 +256,7 @@ export function usePositions() {
 
   // 计算总保证金
   const totalMargin = positions.reduce((sum, pos) => {
-    return sum + parseFloat(pos.margin)
+    return sum + parseUsdcBaseUnits(pos.margin)
   }, 0)
 
   return {

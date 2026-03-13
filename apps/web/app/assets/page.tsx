@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { formatUnits } from 'viem'
 import { useBalance } from '@/hooks/use-balance'
+import { parseUsdcBaseUnits, usePositions } from '@/hooks/use-positions'
 import { BalanceSummary } from '@/components/asset/balance-card'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/use-auth'
@@ -13,6 +14,10 @@ const USDC_DECIMALS = 6
 function formatUSDC(value: string | undefined): number {
   if (!value) return 0
   return parseFloat(formatUnits(BigInt(value), USDC_DECIMALS))
+}
+
+function clampNonNegative(value: number): number {
+  return value > 0 ? value : 0
 }
 
 const ASSETS = [
@@ -41,11 +46,17 @@ const ASSETS = [
 
 export default function AssetsPage() {
   const { balance } = useBalance()
+  const { positions } = usePositions()
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const [hideZero, setHideZero] = useState(false)
 
   const availableBalance = formatUSDC(balance?.availableBalance)
-  const lockedBalance = formatUSDC(balance?.lockedBalance)
+  const lockedBalanceFromPositions = positions.reduce((sum, pos) => {
+    return sum + parseUsdcBaseUnits(pos.margin)
+  }, 0)
+  const lockedBalance = clampNonNegative(
+    positions.length > 0 ? lockedBalanceFromPositions : formatUSDC(balance?.lockedBalance)
+  )
   const totalBalance = availableBalance + lockedBalance
 
   const assetData = ASSETS.map((asset) => ({

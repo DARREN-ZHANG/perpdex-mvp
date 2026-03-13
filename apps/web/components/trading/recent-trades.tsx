@@ -5,6 +5,7 @@ import { formatUnits } from 'viem'
 import { Loader2 } from 'lucide-react'
 import { useOrderHistory } from '@/hooks/use-order-history'
 import { useTransactions } from '@/hooks/use-transactions'
+import { useAuth } from '@/hooks/use-auth'
 import type { OrderHistoryItem } from '@/types/api'
 
 const USDC_DECIMALS = 6
@@ -34,6 +35,7 @@ function getOrderLabel(order: OrderHistoryItem): string {
 
 export function RecentTrades() {
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>('订单记录')
+  const { isAuthenticated } = useAuth()
   const {
     orders,
     isLoading: isOrdersLoading,
@@ -54,7 +56,7 @@ export function RecentTrades() {
   )
 
   const isOrderTab = activeTab === '订单记录'
-  const isLoading = isOrderTab ? isOrdersLoading : isTransactionsLoading
+  const isLoading = isAuthenticated && (isOrderTab ? isOrdersLoading : isTransactionsLoading)
   const isFetchingMore = isOrderTab ? isFetchingNextOrdersPage : isFetchingNextTransactionsPage
   const hasNextPage = isOrderTab ? hasNextOrdersPage : hasNextTransactionsPage
 
@@ -63,7 +65,7 @@ export function RecentTrades() {
     const distanceToBottom =
       element.scrollHeight - element.scrollTop - element.clientHeight
 
-    if (distanceToBottom > 48 || isFetchingMore || !hasNextPage) {
+    if (!isAuthenticated || distanceToBottom > 48 || isFetchingMore || !hasNextPage) {
       return
     }
 
@@ -143,7 +145,7 @@ export function RecentTrades() {
     }
   }
 
-  const isEmpty = isOrderTab ? orders.length === 0 : fundTransactions.length === 0
+  const isEmpty = !isAuthenticated || (isOrderTab ? orders.length === 0 : fundTransactions.length === 0)
 
   return (
     <div className="h-[280px] flex flex-col">
