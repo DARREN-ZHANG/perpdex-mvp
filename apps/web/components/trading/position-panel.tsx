@@ -1,12 +1,13 @@
 'use client'
 
 import { usePositions } from '@/hooks/use-positions'
-import { useMarket } from '@/hooks/use-market'
+import { useBinancePrice } from '@/hooks/use-binance-price'
 import { Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 
 export function PositionPanel() {
-  const { positions, closePosition, isLoading } = usePositions()
-  const { marketData } = useMarket('BTC')
+  const { positions, closePosition, isLoading, isClosing } = usePositions()
+  const { data: priceData } = useBinancePrice('BTCUSDT')
 
   if (isLoading) {
     return (
@@ -43,7 +44,7 @@ export function PositionPanel() {
         const positionSize = parseFloat(position.positionSize || '0')
         const entryPrice = parseFloat(position.entryPrice || '0')
         const liquidationPrice = parseFloat(position.liquidationPrice || '0')
-        const markPrice = marketData?.markPrice ? parseFloat(marketData.markPrice) : 0
+        const markPrice = priceData?.price ?? 0
 
         return (
           <div key={position.id} className="p-5 border-b border-pro-gray-100 last:border-b-0">
@@ -101,10 +102,33 @@ export function PositionPanel() {
             </div>
 
             <button
-              onClick={() => closePosition(position.id)}
-              className="w-full py-2 border border-pro-gray-200 rounded-md text-sm text-pro-gray-500 hover:bg-pro-gray-50 hover:border-pro-accent-red hover:text-pro-accent-red transition-colors"
+              onClick={async () => {
+                const result = await closePosition(position.id)
+
+                if (result.success) {
+                  toast.success('平仓成功', {
+                    description: `${position.symbol} 仓位已平仓`,
+                    duration: 3000,
+                  })
+                  return
+                }
+
+                toast.error('平仓失败', {
+                  description: result.error || '请稍后重试',
+                  duration: 5000,
+                })
+              }}
+              disabled={isClosing(position.id)}
+              className="w-full py-2 border border-pro-gray-200 rounded-md text-sm text-pro-gray-500 hover:bg-pro-gray-50 hover:border-pro-accent-red hover:text-pro-accent-red transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             >
-              平仓
+              {isClosing(position.id) ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  平仓中...
+                </span>
+              ) : (
+                '平仓'
+              )}
             </button>
           </div>
         )

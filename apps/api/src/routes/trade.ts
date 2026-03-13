@@ -22,104 +22,106 @@ function getJwtUser(request: FastifyRequest): JwtUser {
 }
 
 export async function tradeRoutes(app: FastifyInstance): Promise<void> {
-  // POST /api/trade/order - 创建订单
-  app.post(
-    "/api/trade/order",
-    { preHandler: [requireAuth] },
-    async (request) => {
-      const user = getJwtUser(request);
-      const body = createOrderRequestSchema.parse(request.body);
+  const createOrderHandler = async (request: FastifyRequest) => {
+    const user = getJwtUser(request);
+    const body = createOrderRequestSchema.parse(request.body);
 
-      const result = await tradeEngine.createMarketOrder({
-        userId: user.id,
-        symbol: body.symbol,
-        side: body.side,
-        size: new Decimal(body.size),
-        margin: BigInt(body.margin),
-        leverage: body.leverage,
-        clientOrderId: body.clientOrderId
-      });
+    const result = await tradeEngine.createMarketOrder({
+      userId: user.id,
+      symbol: body.symbol,
+      side: body.side,
+      size: new Decimal(body.size),
+      margin: BigInt(body.margin),
+      leverage: body.leverage,
+      clientOrderId: body.clientOrderId
+    });
 
-      logger.info({
-        msg: "Order created via API",
-        userId: user.id,
-        orderId: result.order.id
-      });
+    logger.info({
+      msg: "Order created via API",
+      userId: user.id,
+      orderId: result.order.id
+    });
 
-      return {
-        data: {
-          order: {
-            id: result.order.id,
-            userId: user.id,
-            positionId: result.position?.id,
-            symbol: body.symbol,
-            side: body.side,
-            type: "MARKET",
-            size: body.size,
-            margin: body.margin,
-            leverage: body.leverage,
-            executedPrice: result.order.executedPrice,
-            status: result.order.status,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            filledAt: new Date().toISOString()
-          },
-          position: result.position
-            ? {
-                id: result.position.id,
-                userId: user.id,
-                symbol: body.symbol,
-                side: body.side,
-                positionSize: body.size,
-                entryPrice: result.order.executedPrice,
-                markPrice: result.order.executedPrice,
-                unrealizedPnl: "0",
-                liquidationPrice: "0", // TODO
-                margin: body.margin,
-                status: result.position.status,
-                riskLevel: "SAFE",
-                openedAt: new Date().toISOString(),
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-              }
-            : undefined,
-          hedgeTaskId: result.hedgeTaskId
+    return {
+      data: {
+        order: {
+          id: result.order.id,
+          userId: user.id,
+          positionId: result.position?.id,
+          symbol: body.symbol,
+          side: body.side,
+          type: "MARKET",
+          size: body.size,
+          margin: body.margin,
+          leverage: body.leverage,
+          executedPrice: result.order.executedPrice,
+          status: result.order.status,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          filledAt: new Date().toISOString()
         },
-        error: null,
-        meta: { requestId: request.id }
-      };
-    }
-  );
+        position: result.position
+          ? {
+              id: result.position.id,
+              userId: user.id,
+              symbol: body.symbol,
+              side: body.side,
+              positionSize: body.size,
+              entryPrice: result.order.executedPrice,
+              markPrice: result.order.executedPrice,
+              unrealizedPnl: "0",
+              liquidationPrice: "0", // TODO
+              margin: body.margin,
+              status: result.position.status,
+              riskLevel: "SAFE",
+              openedAt: new Date().toISOString(),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            }
+          : undefined,
+        hedgeTaskId: result.hedgeTaskId
+      },
+      error: null,
+      meta: { requestId: request.id }
+    };
+  };
+
+  const closePositionHandler = async (request: FastifyRequest) => {
+    const user = getJwtUser(request);
+    const params = positionIdParamsSchema.parse(request.params);
+
+    const result = await tradeEngine.closePosition(user.id, params.id);
+
+    return {
+      data: {
+        order: {
+          id: result.order.id,
+          userId: user.id,
+          positionId: result.position.id,
+          status: "FILLED",
+          realizedPnl: result.order.realizedPnl,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        },
+        position: null,
+        hedgeTaskId: result.hedgeTaskId
+      },
+      error: null,
+      meta: { requestId: request.id }
+    };
+  };
+
+  // POST /api/trade/order - 创建订单
+  app.post("/api/trade/order", { preHandler: [requireAuth] }, createOrderHandler);
+
+  // POST /api/trade/orders - 兼容旧版前端请求
+  app.post("/api/trade/orders", { preHandler: [requireAuth] }, createOrderHandler);
 
   // DELETE /api/trade/positions/:id - 平仓
-  app.delete(
-    "/api/trade/positions/:id",
-    { preHandler: [requireAuth] },
-    async (request) => {
-      const user = getJwtUser(request);
-      const params = positionIdParamsSchema.parse(request.params);
+  app.delete("/api/trade/positions/:id", { preHandler: [requireAuth] }, closePositionHandler);
 
-      const result = await tradeEngine.closePosition(user.id, params.id);
-
-      return {
-        data: {
-          order: {
-            id: result.order.id,
-            userId: user.id,
-            positionId: result.position.id,
-            status: "FILLED",
-            realizedPnl: result.order.realizedPnl,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          position: null,
-          hedgeTaskId: result.hedgeTaskId
-        },
-        error: null,
-        meta: { requestId: request.id }
-      };
-    }
-  );
+  // POST /api/trade/positions/:id/close - 兼容旧版前端平仓请求
+  app.post("/api/trade/positions/:id/close", { preHandler: [requireAuth] }, closePositionHandler);
 
   // GET /api/trade/positions/:id - 获取仓位详情
   app.get(

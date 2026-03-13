@@ -98,6 +98,35 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
+  // GET /api/user/orders
+  app.get(
+    "/api/user/orders",
+    { preHandler: [requireAuth] },
+    async (request) => {
+      const user = getJwtUser(request);
+      const query = request.query as {
+        cursor?: string;
+        limit?: string;
+      };
+
+      const limit = query.limit ? Number.parseInt(query.limit, 10) : undefined;
+
+      const result = await balanceService.getOrderHistory(user.id, {
+        cursor: query.cursor,
+        limit
+      });
+
+      return {
+        data: result,
+        error: null,
+        meta: {
+          requestId: request.id,
+          nextCursor: result.nextCursor
+        }
+      };
+    }
+  );
+
   // POST /api/user/withdraw
   app.post(
     "/api/user/withdraw",

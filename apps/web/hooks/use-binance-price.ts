@@ -15,7 +15,8 @@ interface BinanceStreamTickerData {
 }
 
 const SNAPSHOT_TIMEOUT_MS = 5000
-const SNAPSHOT_POLL_INTERVAL_MS = 5000
+const SNAPSHOT_POLL_INTERVAL_MS = 30000
+const SNAPSHOT_STALE_THRESHOLD_MS = 15000
 
 class BinanceWebSocketManager {
   private static instance: BinanceWebSocketManager | null = null
@@ -176,6 +177,97 @@ class BinanceWebSocketManager {
   }
 }
 
+interface PriceStoreEntry {
+  data: BinancePriceData | null
+  error: string | null
+  isLoading: boolean
+  subscribers: Set<(entry: PriceStoreEntry) => void>
+  pollTimer: number | null
+  inFlightSnapshot: Promise<void> | null
+  lastRealtimeUpdateAt: number
+}
+
+const priceStore = new Map<string, PriceStoreEntry>()
+
+function getOrCreatePriceStoreEntry(symbol: string): PriceStoreEntry {
+  let entry = priceStore.get(symbol)
+
+  if (!entry) {
+    entry = {
+      data: null,
+      error: null,
+      isLoading: true,
+      subscribers: new Set(),
+      pollTimer: null,
+      inFlightSnapshot: null,
+      lastRealtimeUpdateAt: 0,
+    }
+    priceStore.set(symbol, entry)
+  }
+
+  return entry
+}
+
+function notifyPriceStore(entry: PriceStoreEntry) {
+  entry.subscribers.forEach(subscriber => subscriber(entry))
+}
+
+async function loadSharedSnapshot(symbol: string, reason: 'initial' | 'poll') {
+  const entry = getOrCreatePriceStoreEntry(symbol)
+
+  if (entry.inFlightSnapshot) {
+    return entry.inFlightSnapshot
+  }
+
+  entry.inFlightSnapshot = (async () => {
+    try {
+      const snapshot = await fetchTickerSnapshot(symbol)
+      entry.data = snapshot
+      entry.error = null
+      entry.isLoading = false
+      notifyPriceStore(entry)
+    } catch (snapshotError) {
+      if (reason === 'initial' && !entry.data) {
+        entry.isLoading = false
+      }
+
+      entry.error = snapshotError instanceof Error ? snapshotError.message : 'Failed to load Binance data'
+      notifyPriceStore(entry)
+    } finally {
+      entry.inFlightSnapshot = null
+    }
+  })()
+
+  return entry.inFlightSnapshot
+}
+
+function ensureSharedPolling(symbol: string) {
+  const entry = getOrCreatePriceStoreEntry(symbol)
+
+  if (entry.pollTimer !== null) {
+    return
+  }
+
+  entry.pollTimer = window.setInterval(() => {
+    const isRealtimeHealthy = Date.now() - entry.lastRealtimeUpdateAt < SNAPSHOT_STALE_THRESHOLD_MS
+    if (isRealtimeHealthy) {
+      return
+    }
+
+    void loadSharedSnapshot(symbol, 'poll')
+  }, SNAPSHOT_POLL_INTERVAL_MS)
+}
+
+function stopSharedPolling(symbol: string) {
+  const entry = priceStore.get(symbol)
+  if (!entry || entry.pollTimer === null) {
+    return
+  }
+
+  window.clearInterval(entry.pollTimer)
+  entry.pollTimer = null
+}
+
 async function fetchTickerSnapshot(symbol: string): Promise<BinancePriceData> {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), SNAPSHOT_TIMEOUT_MS)
@@ -201,68 +293,64 @@ async function fetchTickerSnapshot(symbol: string): Promise<BinancePriceData> {
 }
 
 export function useBinancePrice(symbol: string = DEFAULT_BINANCE_SYMBOL) {
-  const [data, setData] = useState<BinancePriceData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const storeSymbol = symbol.toUpperCase()
+  const initialEntry = getOrCreatePriceStoreEntry(storeSymbol)
+  const [data, setData] = useState<BinancePriceData | null>(initialEntry.data)
+  const [isLoading, setIsLoading] = useState(initialEntry.isLoading)
+  const [error, setError] = useState<string | null>(initialEntry.error)
   const activeRequestRef = useRef(0)
-  const latestDataRef = useRef<BinancePriceData | null>(null)
 
   const handleData = useCallback((priceData: BinancePriceData) => {
+    const entry = getOrCreatePriceStoreEntry(storeSymbol)
+    entry.data = priceData
+    entry.error = null
+    entry.isLoading = false
+    entry.lastRealtimeUpdateAt = Date.now()
+    notifyPriceStore(entry)
+
     setData(priceData)
-    latestDataRef.current = priceData
     setIsLoading(false)
     setError(null)
-  }, [])
+  }, [storeSymbol])
 
   useEffect(() => {
     const requestId = activeRequestRef.current + 1
     activeRequestRef.current = requestId
     const manager = BinanceWebSocketManager.getInstance()
-    const stream = `${symbol.toLowerCase()}@ticker`
+    const entry = getOrCreatePriceStoreEntry(storeSymbol)
+    const stream = `${storeSymbol.toLowerCase()}@ticker`
     let isCancelled = false
 
-    const loadSnapshot = async (mode: 'initial' | 'poll') => {
-      try {
-        const snapshot = await fetchTickerSnapshot(symbol)
-
-        if (isCancelled || activeRequestRef.current !== requestId) {
-          return
-        }
-
-        setData(snapshot)
-        latestDataRef.current = snapshot
-        setIsLoading(false)
-        setError(null)
-      } catch (snapshotError) {
-        if (isCancelled || activeRequestRef.current !== requestId) {
-          return
-        }
-
-        if (mode === 'initial' && !latestDataRef.current) {
-          setIsLoading(false)
-        }
-
-        setError(snapshotError instanceof Error ? snapshotError.message : 'Failed to load Binance data')
+    const handleStoreUpdate = (nextEntry: PriceStoreEntry) => {
+      if (isCancelled || activeRequestRef.current !== requestId) {
+        return
       }
+
+      setData(nextEntry.data)
+      setIsLoading(nextEntry.isLoading)
+      setError(nextEntry.error)
     }
 
-    setIsLoading(true)
-    setError(null)
+    entry.subscribers.add(handleStoreUpdate)
+    handleStoreUpdate(entry)
+
     manager.connect()
     manager.subscribe(stream, handleData)
+    ensureSharedPolling(storeSymbol)
 
-    void loadSnapshot('initial')
-
-    const pollTimer = window.setInterval(() => {
-      void loadSnapshot('poll')
-    }, SNAPSHOT_POLL_INTERVAL_MS)
+    if (!entry.data && !entry.inFlightSnapshot) {
+      void loadSharedSnapshot(storeSymbol, 'initial')
+    }
 
     return () => {
       isCancelled = true
-      window.clearInterval(pollTimer)
+      entry.subscribers.delete(handleStoreUpdate)
       manager.unsubscribe(stream, handleData)
+      if (entry.subscribers.size === 0) {
+        stopSharedPolling(storeSymbol)
+      }
     }
-  }, [symbol, handleData])
+  }, [storeSymbol, handleData])
 
   return { data, isLoading, error }
 }

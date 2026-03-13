@@ -24,6 +24,19 @@ export interface TransactionHistoryItem {
   createdAt: string;
 }
 
+export interface OrderHistoryItem {
+  id: string;
+  symbol: string;
+  side: string;
+  size: string;
+  margin: string;
+  leverage: number;
+  status: string;
+  executedPrice?: string;
+  failureMessage?: string;
+  createdAt: string;
+}
+
 export interface HistoryQuery {
   cursor?: string;
   limit?: number;
@@ -122,6 +135,49 @@ export class BalanceService {
 
     const nextCursor =
       transactions.length > limit ? transactions[limit - 1].id : undefined;
+
+    return { items, nextCursor };
+  }
+
+  /**
+   * 获取订单历史
+   */
+  async getOrderHistory(
+    userId: string,
+    query: Omit<HistoryQuery, "type">
+  ): Promise<{ items: OrderHistoryItem[]; nextCursor?: string }> {
+    const limit = Math.min(query.limit ?? 20, 100);
+
+    const where: {
+      userId: string;
+      id?: { lt: string };
+    } = { userId };
+
+    if (query.cursor) {
+      where.id = { lt: query.cursor };
+    }
+
+    const orders = await prisma.order.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: limit + 1
+    });
+
+    const items = orders.slice(0, limit).map((order) => ({
+      id: order.id,
+      symbol: order.symbol,
+      side: order.side,
+      size: order.size.toString(),
+      margin: order.margin.toString(),
+      leverage: order.leverage,
+      status: order.status,
+      executedPrice: order.executedPrice?.toString(),
+      failureMessage: order.failureMessage ?? undefined,
+      createdAt: order.createdAt.toISOString()
+    }));
+
+    const nextCursor =
+      orders.length > limit ? orders[limit - 1].id : undefined;
 
     return { items, nextCursor };
   }

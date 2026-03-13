@@ -71,3 +71,5 @@ export function useTransactionDetail(transactionId: string) {
     enabled: !!transactionId,
   })
 }
+
+export { TRANSACTIONS_QUERY_KEY }

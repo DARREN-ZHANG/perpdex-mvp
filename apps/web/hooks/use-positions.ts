@@ -8,6 +8,9 @@ import { socketClient } from '@/lib/socket'
 import { useAuth } from './use-auth'
 import type { Position } from '@perpdex/shared'
 import type { PositionUpdate } from '@/types/socket'
+import { BALANCE_QUERY_KEY } from './use-balance'
+import { ORDER_HISTORY_QUERY_KEY } from './use-order-history'
+import { TRANSACTIONS_QUERY_KEY } from './use-transactions'
 
 // 格式化金额
 export function formatAmount(amount: string, decimals: number = 2): string {
@@ -84,7 +87,7 @@ async function fetchPositions(): Promise<Position[]> {
 
 // 平仓
 async function closePosition(positionId: string): Promise<void> {
-  const response = await api.post(`/api/trade/positions/${positionId}/close`)
+  const response = await api.delete(`/api/trade/positions/${positionId}`)
   if (!response.success) {
     throw new Error(response.error?.message || '平仓失败')
   }
@@ -150,18 +153,24 @@ export function usePositions() {
       // 刷新仓位列表
       queryClient.invalidateQueries({ queryKey: ['positions'] })
       // 刷新余额
-      queryClient.invalidateQueries({ queryKey: ['balance'] })
+      queryClient.invalidateQueries({ queryKey: BALANCE_QUERY_KEY })
+      // 刷新订单记录和资金流水
+      queryClient.invalidateQueries({ queryKey: [ORDER_HISTORY_QUERY_KEY] })
+      queryClient.invalidateQueries({ queryKey: [TRANSACTIONS_QUERY_KEY] })
     },
   })
 
-  const handleClosePosition = async (positionId: string): Promise<boolean> => {
+  const handleClosePosition = async (
+    positionId: string
+  ): Promise<{ success: boolean; error?: string }> => {
     setClosingPositionId(positionId)
     try {
       await closeMutation.mutateAsync(positionId)
-      return true
+      return { success: true }
     } catch (error) {
+      const message = error instanceof Error ? error.message : '平仓失败'
       console.error('平仓失败:', error)
-      return false
+      return { success: false, error: message }
     } finally {
       setClosingPositionId(null)
     }

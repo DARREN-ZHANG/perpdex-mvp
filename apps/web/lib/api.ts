@@ -8,6 +8,7 @@ import type {
   User,
   RequestConfig,
   AccountBalance,
+  OrderHistoryItem,
   Transaction,
   WithdrawPayload,
   PaginatedResponse,
@@ -84,10 +85,11 @@ class ApiClient {
 
     const url = `${this.baseUrl}${endpoint}`
     const token = this.getAccessToken()
+    const hasJsonBody = typeof fetchOptions.body === 'string' && fetchOptions.body.length > 0
 
     const defaultHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(hasJsonBody ? { 'Content-Type': 'application/json' } : {}),
     }
 
     // 合并自定义 headers
@@ -139,9 +141,11 @@ class ApiClient {
         }
 
         // 确保成功响应包含 success 字段
+        const { success: _ignoredSuccess, ...responseData } = data
+
         return {
+          ...responseData,
           success: true,
-          ...data,
         }
       } catch (error) {
         lastError = error as Error
@@ -275,6 +279,20 @@ class ApiClient {
     )
   }
 
+  // 获取订单历史
+  async getOrders(
+    query?: { cursor?: string; limit?: number }
+  ): Promise<ApiResponse<PaginatedResponse<OrderHistoryItem>>> {
+    const params = new URLSearchParams()
+    if (query?.cursor) params.append('cursor', query.cursor)
+    if (query?.limit) params.append('limit', query.limit.toString())
+
+    const queryString = params.toString()
+    return this.get<PaginatedResponse<OrderHistoryItem>>(
+      `/api/user/orders${queryString ? `?${queryString}` : ''}`
+    )
+  }
+
   // 发起提现
   async withdraw(amount: string): Promise<ApiResponse<WithdrawPayload>> {
     return this.post<WithdrawPayload>('/api/user/withdraw', { amount })
@@ -285,4 +303,4 @@ class ApiClient {
 export const api = new ApiClient()
 
 // 导出类型
-export type { ApiResponse, ApiError, AuthChallenge, AuthTokens, User, AccountBalance, Transaction, WithdrawPayload, PaginatedResponse }
+export type { ApiResponse, ApiError, AuthChallenge, AuthTokens, User, AccountBalance, OrderHistoryItem, Transaction, WithdrawPayload, PaginatedResponse }

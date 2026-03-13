@@ -10,6 +10,7 @@ const BINANCE_KLINE_ENDPOINTS = [
   'https://api.binance.us/api/v3/klines',
 ]
 const UPSTREAM_TIMEOUT_MS = 5000
+const RESPONSE_CACHE_CONTROL = 'public, s-maxage=30, stale-while-revalidate=120'
 
 function isValidSymbol(symbol: string): boolean {
   return /^[A-Z0-9]{5,20}$/.test(symbol)
@@ -60,9 +61,16 @@ export async function GET(request: Request) {
       }
 
       const payload = await response.json() as BinanceKlineResponse[]
-      return NextResponse.json({
-        data: payload.map(normalizeBinanceKline),
-      })
+      return NextResponse.json(
+        {
+          data: payload.map(normalizeBinanceKline),
+        },
+        {
+          headers: {
+            'Cache-Control': RESPONSE_CACHE_CONTROL,
+          },
+        }
+      )
     } catch (error) {
       lastError = error instanceof Error ? error : new Error('Failed to load Binance klines')
     } finally {
@@ -74,6 +82,11 @@ export async function GET(request: Request) {
     {
       error: lastError?.message || 'Failed to load Binance klines',
     },
-    { status: 502 }
+    {
+      status: 502,
+      headers: {
+        'Cache-Control': 'no-store',
+      },
+    }
   )
 }

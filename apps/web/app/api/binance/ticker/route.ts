@@ -16,6 +16,7 @@ const BINANCE_TICKER_ENDPOINTS = [
   },
 ]
 const UPSTREAM_TIMEOUT_MS = 5000
+const RESPONSE_CACHE_CONTROL = 'public, s-maxage=1, stale-while-revalidate=4'
 
 function isValidSymbol(symbol: string): boolean {
   return /^[A-Z0-9]{5,20}$/.test(symbol)
@@ -69,7 +70,14 @@ export async function GET(request: Request) {
 
   try {
     const data = await fetchTickerSnapshot(requestedSymbol)
-    return NextResponse.json({ data })
+    return NextResponse.json(
+      { data },
+      {
+        headers: {
+          'Cache-Control': RESPONSE_CACHE_CONTROL,
+        },
+      }
+    )
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load Binance market data'
 
@@ -77,7 +85,12 @@ export async function GET(request: Request) {
       {
         error: message,
       },
-      { status: 502 }
+      {
+        status: 502,
+        headers: {
+          'Cache-Control': 'no-store',
+        },
+      }
     )
   }
 }

@@ -3,13 +3,13 @@
 
 import { createAppKit } from '@reown/appkit/react'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
-import { arbitrumSepolia } from '@reown/appkit/networks'
+import { arbitrumSepolia, type AppKitNetwork } from '@reown/appkit/networks'
 import { WagmiProvider } from 'wagmi'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 
 // 本地 Anvil 链配置
-const localhost = {
+const localhost: AppKitNetwork = {
   id: 31337,
   name: 'Localhost 31337',
   nativeCurrency: {
@@ -22,15 +22,15 @@ const localhost = {
       http: ['http://localhost:8545'],
     },
   },
-} as const
+}
 
 // 获取当前链 ID（优先使用环境变量）
 const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '421614')
 const isLocalChain = chainId === 31337
 
 // 根据环境选择网络
-const networks = isLocalChain ? [localhost] : [arbitrumSepolia]
-const defaultNetwork = isLocalChain ? localhost : arbitrumSepolia
+const defaultNetwork: AppKitNetwork = isLocalChain ? localhost : arbitrumSepolia
+const networks: [AppKitNetwork] = [defaultNetwork]
 
 // 获取项目 ID
 const projectId = process.env.NEXT_PUBLIC_WALLET_CONNECT_PROJECT_ID || 'demo_project_id'

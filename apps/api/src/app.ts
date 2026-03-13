@@ -36,6 +36,29 @@ export async function buildServer() {
     requestIdLogLabel: "requestId"
   });
 
+  // Accept `Content-Type: application/json` even when the request body is empty.
+  // Some browser/curl clients still send the header for DELETE/POST requests with
+  // no payload, and Fastify's default parser rejects that before route handling.
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser(
+    /^application\/json(?:;.*)?$/,
+    { parseAs: "string" },
+    (_request, body, done) => {
+      const rawBody = typeof body === "string" ? body : body.toString("utf8");
+
+      if (rawBody.trim() === "") {
+        done(null, undefined);
+        return;
+      }
+
+      try {
+        done(null, JSON.parse(rawBody));
+      } catch (error) {
+        done(error as Error);
+      }
+    }
+  );
+
   // Set Zod validator and serializer
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
