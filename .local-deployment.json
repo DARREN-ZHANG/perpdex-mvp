@@ -1,0 +1,7 @@
+{
+  "chainId": 31337,
+  "rpcUrl": "http://localhost:8545",
+  "usdcAddress": "",
+  "vaultAddress": "",
+  "deployedAt": "2026-03-%dT 05:40:48"
+}

@@ -8,12 +8,29 @@ import {
   createWalletClient,
   http,
   type Address,
-  type Hex
+  type Hex,
+  type Chain
 } from "viem";
-import { arbitrumSepolia } from "viem/chains";
+import { arbitrumSepolia, foundry } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import { config } from "../config/index";
 import { logger } from "../utils/logger";
+
+// 根据配置选择链
+function getChain(chainId: number): Chain {
+  if (chainId === 31337) {
+    // 本地 Anvil 链
+    return {
+      ...foundry,
+      id: 31337,
+      name: "Localhost 31337",
+      rpcUrls: {
+        default: { http: ["http://localhost:8545"] }
+      }
+    };
+  }
+  return arbitrumSepolia;
+}
 
 // Vault ABI (仅包含需要的方法)
 const VAULT_ABI = [
@@ -43,12 +60,14 @@ export class BlockchainClient {
   private publicClient: ReturnType<typeof createPublicClient>;
   private walletClient: ReturnType<typeof createWalletClient> | null = null;
   private vaultAddress: Address;
+  private chain: Chain;
 
   constructor() {
     this.vaultAddress = config.external.vaultContractAddress as Address;
+    this.chain = getChain(config.external.chainId);
 
     this.publicClient = createPublicClient({
-      chain: arbitrumSepolia,
+      chain: this.chain,
       transport: http(config.external.rpcUrl)
     });
 
@@ -57,7 +76,7 @@ export class BlockchainClient {
     if (privateKey) {
       const account = privateKeyToAccount(privateKey as Hex);
       this.walletClient = createWalletClient({
-        chain: arbitrumSepolia,
+        chain: this.chain,
         transport: http(config.external.rpcUrl),
         account
       });
@@ -67,6 +86,13 @@ export class BlockchainClient {
         msg: "HEDGE_PRIVATE_KEY not set, onchain operations disabled"
       });
     }
+
+    logger.info({
+      msg: "Blockchain client initialized",
+      chainId: this.chain.id,
+      chainName: this.chain.name,
+      vaultAddress: this.vaultAddress
+    });
   }
 
   /**

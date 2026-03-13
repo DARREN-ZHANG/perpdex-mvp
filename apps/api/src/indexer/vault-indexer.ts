@@ -7,13 +7,30 @@ import {
   createPublicClient,
   http,
   type Address,
-  type Log
+  type Log,
+  type Chain
 } from "viem";
-import { arbitrumSepolia } from "viem/chains";
+import { arbitrumSepolia, foundry } from "viem/chains";
 import { config } from "../config/index";
 import { logger } from "../utils/logger";
 import { BlockCursorManager } from "./block-cursor";
 import { EventHandler, type DepositEvent, type WithdrawEvent } from "./event-handler";
+
+// 根据配置选择链
+function getChain(chainId: number): Chain {
+  if (chainId === 31337) {
+    // 本地 Anvil 链
+    return {
+      ...foundry,
+      id: 31337,
+      name: "Localhost 31337",
+      rpcUrls: {
+        default: { http: ["http://localhost:8545"] }
+      }
+    };
+  }
+  return arbitrumSepolia;
+}
 
 export class VaultIndexer {
   private client: ReturnType<typeof createPublicClient>;
@@ -47,9 +64,17 @@ export class VaultIndexer {
     this.cursorManager = new BlockCursorManager();
     this.eventHandler = new EventHandler();
 
+    const chain = getChain(config.external.chainId);
     this.client = createPublicClient({
-      chain: arbitrumSepolia,
+      chain,
       transport: http(config.external.rpcUrl)
+    });
+
+    logger.info({
+      msg: "Vault indexer initialized",
+      chainId: chain.id,
+      chainName: chain.name,
+      vaultAddress: this.vaultAddress
     });
   }
 
@@ -65,7 +90,7 @@ export class VaultIndexer {
     logger.info({
       msg: "Starting Vault indexer",
       vaultAddress: this.vaultAddress,
-      chainId: arbitrumSepolia.id
+      chainId: config.external.chainId
     });
 
     // 初始化游标（从当前区块 - 100 开始，避免错过事件）

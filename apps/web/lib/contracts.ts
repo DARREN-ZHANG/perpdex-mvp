@@ -1,12 +1,25 @@
 // apps/web/lib/contracts.ts
 
-// Arbitrum Sepolia 合约地址
+// 检测是否为本地链
+const isLocalChain = process.env.NEXT_PUBLIC_CHAIN_ID === '31337'
+
+// 合约地址配置
 export const CONTRACT_ADDRESSES = {
-  // Vault 合约地址（部署后更新）
-  VAULT: process.env.NEXT_PUBLIC_VAULT_ADDRESS || '0x0000000000000000000000000000000000000000',
-  // USDC 合约地址（Arbitrum Sepolia）
-  USDC: process.env.NEXT_PUBLIC_USDC_ADDRESS || '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',
+  // Vault 合约地址
+  VAULT: process.env.NEXT_PUBLIC_VAULT_ADDRESS || (isLocalChain
+    ? '0x0000000000000000000000000000000000000000' // 本地链需要部署后设置
+    : '0x0000000000000000000000000000000000000000'),
+  // USDC 合约地址
+  USDC: process.env.NEXT_PUBLIC_USDC_ADDRESS || (isLocalChain
+    ? '0x0000000000000000000000000000000000000000' // 本地链使用 MockUSDC
+    : '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d'), // Arbitrum Sepolia USDC
 } as const
+
+// 检查合约是否已配置
+export function areContractsConfigured(): boolean {
+  return CONTRACT_ADDRESSES.VAULT !== '0x0000000000000000000000000000000000000000' &&
+         CONTRACT_ADDRESSES.USDC !== '0x0000000000000000000000000000000000000000'
+}
 
 // ERC20 标准 ABI（USDC）
 export const ERC20_ABI = [
