@@ -2,10 +2,15 @@
 'use client'
 
 import { useState, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { tradingApi } from '@/lib/trading-api'
+import { TRADING_CONFIG } from '@/config/constants'
 import type { OrderFormData, Order } from '@/types/trading'
 import type { ApiResponse } from '@/types/api'
 import type { CreateOrderResponse } from '@/lib/trading-api'
+import { BALANCE_QUERY_KEY } from './use-balance'
+import { ORDER_HISTORY_QUERY_KEY } from './use-order-history'
+import { TRANSACTIONS_QUERY_KEY } from './use-transactions'
 
 const DEFAULT_SYMBOL = 'BTC'
 
@@ -17,6 +22,7 @@ export interface UseOrdersReturn {
 }
 
 export function useOrders(symbol: string = DEFAULT_SYMBOL): UseOrdersReturn {
+  const queryClient = useQueryClient()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [lastOrder, setLastOrder] = useState<Order | null>(null)
 
@@ -38,6 +44,10 @@ export function useOrders(symbol: string = DEFAULT_SYMBOL): UseOrdersReturn {
 
         if (response.success && response.data) {
           setLastOrder(response.data.order)
+          queryClient.invalidateQueries({ queryKey: ['positions'] })
+          queryClient.invalidateQueries({ queryKey: BALANCE_QUERY_KEY })
+          queryClient.invalidateQueries({ queryKey: [ORDER_HISTORY_QUERY_KEY] })
+          queryClient.invalidateQueries({ queryKey: [TRANSACTIONS_QUERY_KEY] })
         }
 
         return response
@@ -45,7 +55,7 @@ export function useOrders(symbol: string = DEFAULT_SYMBOL): UseOrdersReturn {
         setIsSubmitting(false)
       }
     },
-    [symbol]
+    [queryClient, symbol]
   )
 
   const resetLastOrder = useCallback(() => {
@@ -97,11 +107,15 @@ export function validateOrderForm(
   }
 
   if (margin <= 0) {
-    return { valid: false, error: '保证金必须大于0' }
+    return { valid: false, error: '金额必须大于0' }
+  }
+
+  if (margin < TRADING_CONFIG.MIN_MARGIN) {
+    return { valid: false, error: `金额不能低于 ${TRADING_CONFIG.MIN_MARGIN} USDC` }
   }
 
   if (margin > balance) {
-    return { valid: false, error: '保证金不足' }
+    return { valid: false, error: '金额不足' }
   }
 
   if (data.leverage < 1 || data.leverage > 20) {

@@ -17,3 +17,6 @@ out
 apps/*/e2e
 apps/*/playwright-report
 apps/*/test-results
+
+apps/contracts/broadcast/*
+apps/contracts/cache

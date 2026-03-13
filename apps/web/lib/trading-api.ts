@@ -1,6 +1,7 @@
 // 交易相关 API 封装
 
 import { api } from './api'
+import { parseUnits } from 'viem'
 import type { CandleData, Timeframe } from '@/types/trading'
 
 export interface MarketDetailsResponse {
@@ -62,6 +63,10 @@ export const tradingApi = {
 
   // 创建订单
   async createOrder(request: CreateOrderRequest) {
-    return api.post<CreateOrderResponse>('/api/trade/orders', request)
+    return api.post<CreateOrderResponse>('/api/trade/order', {
+      ...request,
+      // Backend expects USDC in 6-decimal base units.
+      margin: parseUnits(request.margin, 6).toString(),
+    })
   },
 }

@@ -1,10 +1,24 @@
 'use client'
 
 import { useState } from 'react'
+import { formatUnits } from 'viem'
 import { useBalance } from '@/hooks/use-balance'
+import { parseUsdcBaseUnits, usePositions } from '@/hooks/use-positions'
 import { BalanceSummary } from '@/components/asset/balance-card'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/use-auth'
+
+const USDC_DECIMALS = 6
+
+// 将原始值转换为可读的 USDC 金额
+function formatUSDC(value: string | undefined): number {
+  if (!value) return 0
+  return parseFloat(formatUnits(BigInt(value), USDC_DECIMALS))
+}
+
+function clampNonNegative(value: number): number {
+  return value > 0 ? value : 0
+}
 
 const ASSETS = [
   {
@@ -12,28 +26,37 @@ const ASSETS = [
     name: 'USD Coin',
     color: '#2775CA',
     letter: 'U',
+    supported: true,
   },
   {
     symbol: 'BTC',
     name: 'Bitcoin',
     color: '#F7931A',
     letter: '₿',
+    supported: false,
   },
   {
     symbol: 'ETH',
     name: 'Ethereum',
     color: '#627EEA',
     letter: 'Ξ',
+    supported: false,
   },
 ]
 
 export default function AssetsPage() {
   const { balance } = useBalance()
+  const { positions } = usePositions()
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const [hideZero, setHideZero] = useState(false)
 
-  const availableBalance = parseFloat(balance?.availableBalance || '0')
-  const lockedBalance = parseFloat(balance?.lockedBalance || '0')
+  const availableBalance = formatUSDC(balance?.availableBalance)
+  const lockedBalanceFromPositions = positions.reduce((sum, pos) => {
+    return sum + parseUsdcBaseUnits(pos.margin)
+  }, 0)
+  const lockedBalance = clampNonNegative(
+    positions.length > 0 ? lockedBalanceFromPositions : formatUSDC(balance?.lockedBalance)
+  )
   const totalBalance = availableBalance + lockedBalance
 
   const assetData = ASSETS.map((asset) => ({
@@ -133,45 +156,54 @@ export default function AssetsPage() {
               {assetData.map((asset) => (
                 <tr
                   key={asset.symbol}
-                  className="border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
+                  className={`border-b border-pro-gray-50 transition-colors ${
+                    asset.supported ? 'hover:bg-pro-gray-50' : 'bg-pro-gray-50/60'
+                  }`}
                 >
                   <td className="px-6 py-5">
                     <div className="flex items-center gap-4">
                       <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
-                        style={{ backgroundColor: asset.color }}
+                        className={`w-10 h-10 rounded-full flex items-center justify-center font-bold ${
+                          asset.supported ? 'text-white' : 'text-pro-gray-500'
+                        }`}
+                        style={{ backgroundColor: asset.supported ? asset.color : '#E5E7EB' }}
                       >
                         {asset.letter}
                       </div>
                       <div>
-                        <div className="font-semibold text-pro-gray-800">
+                        <div className={`font-semibold ${asset.supported ? 'text-pro-gray-800' : 'text-pro-gray-400'}`}>
                           {asset.symbol}
                         </div>
-                        <div className="text-sm text-pro-gray-500">
+                        <div className={`text-sm ${asset.supported ? 'text-pro-gray-500' : 'text-pro-gray-400'}`}>
                           {asset.name}
                         </div>
+                        {!asset.supported && (
+                          <div className="text-xs text-pro-gray-400 mt-1">
+                            CFD 模式暂不支持该资产充提
+                          </div>
+                        )}
                       </div>
                     </div>
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <div className="font-semibold font-mono text-pro-gray-800">
+                    <div className={`font-semibold font-mono ${asset.supported ? 'text-pro-gray-800' : 'text-pro-gray-400'}`}>
                       {asset.total.toLocaleString('en-US', {
                         minimumFractionDigits: 2,
                       })}
                     </div>
-                    <div className="text-sm text-pro-gray-500">
+                    <div className={`text-sm ${asset.supported ? 'text-pro-gray-500' : 'text-pro-gray-400'}`}>
                       ≈ ${asset.total.toLocaleString('en-US', {
                         minimumFractionDigits: 2,
                       })}
                     </div>
                   </td>
                   <td className="px-6 py-5 text-right">
-                    <div className="font-semibold font-mono text-pro-gray-800">
+                    <div className={`font-semibold font-mono ${asset.supported ? 'text-pro-gray-800' : 'text-pro-gray-400'}`}>
                       {asset.available.toLocaleString('en-US', {
                         minimumFractionDigits: 2,
                       })}
                     </div>
-                    <div className="text-sm text-pro-gray-500">
+                    <div className={`text-sm ${asset.supported ? 'text-pro-gray-500' : 'text-pro-gray-400'}`}>
                       ≈ ${asset.available.toLocaleString('en-US', {
                         minimumFractionDigits: 2,
                       })}
@@ -179,7 +211,7 @@ export default function AssetsPage() {
                   </td>
                   <td className="px-6 py-5 text-right">
                     {asset.locked > 0 ? (
-                      <div className="font-semibold font-mono text-pro-gray-800">
+                      <div className={`font-semibold font-mono ${asset.supported ? 'text-pro-gray-800' : 'text-pro-gray-400'}`}>
                         {asset.locked.toLocaleString('en-US', {
                           minimumFractionDigits: 2,
                         })}
@@ -190,12 +222,26 @@ export default function AssetsPage() {
                   </td>
                   <td className="px-6 py-5 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button className="px-3 py-1.5 bg-pro-accent-green text-white text-xs font-medium rounded hover:bg-pro-accent-green/90 transition-colors">
-                        充值
-                      </button>
-                      <button className="px-3 py-1.5 border border-pro-gray-200 text-pro-gray-600 text-xs font-medium rounded hover:border-pro-gray-300 transition-colors">
-                        提现
-                      </button>
+                      {asset.symbol === 'USDC' ? (
+                        <>
+                          <Link
+                            href="/deposit"
+                            className="px-3 py-1.5 bg-pro-accent-green text-white text-xs font-medium rounded hover:bg-pro-accent-green/90 transition-colors"
+                          >
+                            充值
+                          </Link>
+                          <Link
+                            href="/withdraw"
+                            className="px-3 py-1.5 border border-pro-gray-200 text-pro-gray-600 text-xs font-medium rounded hover:border-pro-gray-300 transition-colors"
+                          >
+                            提现
+                          </Link>
+                        </>
+                      ) : (
+                        <span className="px-3 py-1.5 text-xs font-medium text-pro-gray-400 bg-pro-gray-100 rounded">
+                          暂不支持
+                        </span>
+                      )}
                     </div>
                   </td>
                 </tr>

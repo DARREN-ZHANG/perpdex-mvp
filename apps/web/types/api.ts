@@ -96,6 +96,20 @@ export interface Transaction {
   confirmedAt?: string | null
 }
 
+export interface OrderHistoryItem {
+  id: string
+  symbol: string
+  side: 'LONG' | 'SHORT'
+  action: 'OPEN' | 'CLOSE'
+  size: string
+  margin: string
+  leverage: number
+  status: 'PENDING' | 'FILLED' | 'FAILED' | 'CANCELED'
+  executedPrice?: string
+  failureMessage?: string
+  createdAt: string
+}
+
 // 提现请求
 export interface WithdrawRequest {
   amount: string

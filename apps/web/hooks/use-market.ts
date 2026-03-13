@@ -4,6 +4,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { tradingApi } from '@/lib/trading-api'
 import { socketClient } from '@/lib/socket'
+import { useBinancePrice } from '@/hooks/use-binance-price'
+import {
+  BINANCE_KLINE_LIMIT,
+  toBinanceInterval,
+  toBinanceSymbol,
+} from '@/lib/binance-market'
 import type {
   MarketData,
   CandleData,
@@ -55,6 +61,8 @@ function generateMockCandles(timeframe: Timeframe): CandleData[] {
 }
 
 export function useMarket(symbol: string = DEFAULT_SYMBOL): UseMarketReturn {
+  const marketSymbol = toBinanceSymbol(symbol)
+  const { data: binancePrice, isLoading: isBinanceLoading, error: binanceError } = useBinancePrice(marketSymbol)
   const [marketData, setMarketData] = useState<MarketData | null>(null)
   const [candleData, setCandleData] = useState<CandleData[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -63,8 +71,34 @@ export function useMarket(symbol: string = DEFAULT_SYMBOL): UseMarketReturn {
   const [currentPrice, setCurrentPrice] = useState(0)
   const unsubscribeRef = useRef<(() => void) | null>(null)
 
-  // 加载市场数据
+  const syncBinanceMarketData = useCallback(() => {
+    if (!binancePrice) {
+      return false
+    }
+
+    setMarketData({
+      symbol,
+      markPrice: binancePrice.price.toFixed(2),
+      indexPrice: binancePrice.price.toFixed(2),
+      change24h: binancePrice.changePercent24h.toFixed(2),
+      openInterest: binancePrice.volume24h.toFixed(2),
+      high24h: binancePrice.high24h.toFixed(2),
+      low24h: binancePrice.low24h.toFixed(2),
+      volume24h: binancePrice.volume24h.toFixed(2),
+      updatedAt: new Date(binancePrice.updatedAt).toISOString(),
+    })
+    setCurrentPrice(binancePrice.price)
+    setError(null)
+    setIsLoading(false)
+
+    return true
+  }, [binancePrice, symbol])
+
   const loadMarketData = useCallback(async () => {
+    if (syncBinanceMarketData()) {
+      return
+    }
+
     try {
       setIsLoading(true)
       setError(null)
@@ -75,73 +109,69 @@ export function useMarket(symbol: string = DEFAULT_SYMBOL): UseMarketReturn {
         setMarketData(response.data.market)
         setCurrentPrice(parseFloat(response.data.market.markPrice))
       } else {
-        // 使用模拟数据
-        setMarketData({
-          symbol,
-          markPrice: '65000.00',
-          indexPrice: '65000.00',
-          change24h: '+2.5',
-          openInterest: '1000000',
-          updatedAt: new Date().toISOString(),
-        })
-        setCurrentPrice(65000)
+        throw new Error(response.error?.message || 'Market API is unavailable')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载市场数据失败')
-      // 使用模拟数据
-      setMarketData({
-        symbol,
-        markPrice: '65000.00',
-        indexPrice: '65000.00',
-        change24h: '+2.5',
-        openInterest: '1000000',
-        updatedAt: new Date().toISOString(),
-      })
-      setCurrentPrice(65000)
     } finally {
       setIsLoading(false)
     }
-  }, [symbol])
+  }, [symbol, syncBinanceMarketData])
 
-  // 加载 K 线数据
   const loadCandleData = useCallback(async () => {
     try {
-      // 先生成模拟数据
       const mockCandles = generateMockCandles(selectedTimeframe)
       setCandleData(mockCandles)
 
-      // 尝试从 API 获取
-      const response = await tradingApi.getCandleHistory(symbol, selectedTimeframe)
-      if (response.success && response.data) {
-        setCandleData(response.data.items)
+      const response = await fetch(
+        `/api/binance/klines?symbol=${encodeURIComponent(marketSymbol)}&interval=${encodeURIComponent(toBinanceInterval(selectedTimeframe))}&limit=${BINANCE_KLINE_LIMIT}`,
+        { cache: 'no-store' }
+      )
+
+      const payload = await response.json() as {
+        data?: CandleData[]
+      }
+
+      if (response.ok && payload.data) {
+        setCandleData(payload.data)
       }
     } catch {
-      // 使用模拟数据
       const mockCandles = generateMockCandles(selectedTimeframe)
       setCandleData(mockCandles)
     }
-  }, [symbol, selectedTimeframe])
+  }, [marketSymbol, selectedTimeframe])
 
-  // 订阅实时行情
   useEffect(() => {
-    // 初始加载
+    syncBinanceMarketData()
+  }, [syncBinanceMarketData])
+
+  useEffect(() => {
+    if (!binanceError || binancePrice) {
+      return
+    }
+
+    setError(binanceError)
+    setIsLoading(false)
+  }, [binanceError, binancePrice])
+
+  useEffect(() => {
     loadMarketData()
     loadCandleData()
 
-    // 连接 Socket
     socketClient.connect()
 
-    // 订阅市场数据
     const unsubscribe = socketClient.subscribeMarket(symbol, (data) => {
-      // 转换 Socket MarketData 到 Trading MarketData
-      setMarketData({
+      setMarketData((prev) => ({
         symbol: data.symbol,
         markPrice: data.price,
         indexPrice: data.price,
         change24h: data.change24h,
         openInterest: '0',
+        high24h: prev?.high24h,
+        low24h: prev?.low24h,
+        volume24h: prev?.volume24h,
         updatedAt: new Date(data.timestamp).toISOString(),
-      })
+      }))
       setCurrentPrice(parseFloat(data.price))
     })
 
@@ -154,7 +184,6 @@ export function useMarket(symbol: string = DEFAULT_SYMBOL): UseMarketReturn {
     }
   }, [symbol, loadMarketData, loadCandleData])
 
-  // 订阅 K 线更新
   useEffect(() => {
     const unsubscribe = socketClient.subscribeCandles(
       symbol,
@@ -187,7 +216,7 @@ export function useMarket(symbol: string = DEFAULT_SYMBOL): UseMarketReturn {
     marketData,
     candleData,
     currentPrice,
-    isLoading,
+    isLoading: (isLoading || isBinanceLoading) && !marketData,
     error,
     selectedTimeframe,
     setSelectedTimeframe,

@@ -11,9 +11,19 @@ import { logger } from "../utils/logger";
 import { hyperliquidClient } from "../clients/hyperliquid";
 import { QUEUE_NAMES, type HedgeJobData, type HedgeJobResult } from "../queue/types";
 import { moveToDLQ } from "../queue/queue";
-import { canTransitionHedgeStatus } from "@perpdex/shared";
 
 let worker: Worker<HedgeJobData, HedgeJobResult> | null = null;
+
+function isRetryableError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message.toLowerCase() : "unknown error";
+
+  return !(
+    message.includes("asset") ||
+    message.includes("invalid") ||
+    message.includes("not found") ||
+    message.includes("parameter")
+  );
+}
 
 /**
  * 启动 Hedge Worker
@@ -82,7 +92,7 @@ export function startHedgeWorker(): Worker<HedgeJobData, HedgeJobResult> {
 /**
  * 处理对冲任务
  */
-async function processHedgeJob(
+export async function processHedgeJob(
   job: Job<HedgeJobData>
 ): Promise<HedgeJobResult> {
   const startTime = Date.now();
@@ -108,7 +118,7 @@ async function processHedgeJob(
     }
 
     // 2. 检查是否可以执行
-    if (!canTransitionHedgeStatus(hedgeOrder.status, "SUBMITTED")) {
+    if (hedgeOrder.status === "FILLED" || hedgeOrder.status === "FAILED") {
       logger.warn({
         msg: "Hedge order already processed",
         taskId: data.taskId,
@@ -124,22 +134,28 @@ async function processHedgeJob(
     }
 
     // 3. 更新状态为 SUBMITTED
-    await prisma.hedgeOrder.update({
-      where: { taskId: data.taskId },
-      data: {
-        status: "SUBMITTED",
-        submittedAt: new Date()
-      }
-    });
+    if (hedgeOrder.status === "PENDING") {
+      await prisma.hedgeOrder.update({
+        where: { taskId: data.taskId },
+        data: {
+          status: "SUBMITTED",
+          submittedAt: new Date(),
+          retryCount: job.attemptsMade
+        }
+      });
+    }
 
-    // 4. 执行反向订单
-    // 对冲方向：用户做多(LONG) -> 平台做空(sell)，用户做空(SHORT) -> 平台做多(buy)
-    const hedgeSide = data.side === "LONG" ? "sell" : "buy";
+    // 4. 执行对冲订单
+    // data.side 表示要在 HyperLiquid 上持有/关闭的方向:
+    // LONG -> buy, SHORT -> sell
+    const hedgeSide = data.side === "LONG" ? "buy" : "sell";
+    const reduceOnly = hedgeOrder.trigger === "CLOSE";
 
     const result = await hyperliquidClient.submitMarketOrder(
       data.symbol,
       hedgeSide,
-      data.size
+      data.size,
+      reduceOnly
     );
 
     // 5. 更新订单状态
@@ -148,8 +164,9 @@ async function processHedgeJob(
       data: {
         status: "FILLED",
         externalOrderId: result.orderId,
-        referencePrice: result.averagePrice ? new Decimal(result.averagePrice).mul(1e6).toFixed() : null,
-        filledAt: new Date()
+        referencePrice: result.averagePrice ? new Decimal(result.averagePrice) : null,
+        filledAt: new Date(),
+        retryCount: job.attemptsMade
       }
     });
 
@@ -167,14 +184,20 @@ async function processHedgeJob(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
 
+    const currentAttempt = job.attemptsMade + 1;
+    const maxAttempts = job.opts.attempts ?? 1;
+    const retryable = isRetryableError(error);
+    const shouldRetry = retryable && currentAttempt < maxAttempts;
+
     // 更新失败状态
     try {
       await prisma.hedgeOrder.update({
         where: { taskId: data.taskId },
         data: {
-          status: "FAILED",
+          status: shouldRetry ? "PENDING" : "FAILED",
+          retryCount: currentAttempt,
           errorMessage,
-          failedAt: new Date()
+          failedAt: shouldRetry ? null : new Date()
         }
       });
     } catch {
@@ -187,8 +210,7 @@ async function processHedgeJob(
     }
 
     // 检查是否应该移到 DLQ
-    const maxAttempts = job.opts.attempts ?? 3;
-    if (maxAttempts !== undefined && job.attemptsMade >= maxAttempts) {
+    if (!shouldRetry) {
       await moveToDLQ(data.taskId, errorMessage, data);
     }
 

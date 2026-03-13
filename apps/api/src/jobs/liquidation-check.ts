@@ -5,9 +5,12 @@
  */
 import type { ScheduledTask } from "node-cron";
 import cron from "node-cron";
+import Decimal from "decimal.js";
 import { prisma } from "../db/client";
 import { logger } from "../utils/logger";
-import { addHedgeTask } from "../queue/queue";
+import { marketService } from "../services/market.service";
+import { shouldLiquidate, type PositionInput } from "../engines/pnl-calculator";
+import { tradeEngine } from "../engines/trade-engine";
 
 const LIQUIDATION_CHECK_INTERVAL = "*/5 * * * *"; // 每 5 分钟
 
@@ -30,31 +33,33 @@ export async function runLiquidationCheck(): Promise<void> {
     });
 
     for (const position of positions) {
-      // 简化判断：如果 liquidationPrice 达到，需要清算
-      // 实际应该使用实时价格计算
-      // TODO: 使用实时价格计算是否需要清算
-      // if (shouldLiquidate(position)) {
-      //   logger.warn({
-      //     msg: "Position below maintenance margin",
-      //     positionId: position.id
-      //   });
+      const markPrice = await marketService.getMarkPrice(position.symbol);
+      const metadata = position.metadata as { leverage?: number } | null;
+      const leverage = metadata?.leverage ?? 10;
+      const marginInUsd = new Decimal(position.margin.toString()).div(new Decimal(1_000_000));
+      const shouldForceLiquidation = shouldLiquidate(
+        {
+          side: position.side,
+          positionSize: new Decimal(position.positionSize.toString()),
+          entryPrice: new Decimal(position.entryPrice.toString()),
+          margin: marginInUsd,
+          leverage
+        } satisfies PositionInput,
+        { markPrice }
+      );
 
-      //   await addHedgeTask({
-      //     taskId: crypto.randomUUID(),
-      //     source: "liquidation",
-      //     userId: position.userId,
-      //     positionId: position.id,
-      //     symbol: "BTC",
-      //     side: position.side.toLowerCase() as "long" | "short",
-      //     size: position.positionSize.toString(),
-      //     referencePrice: "0",
-      //     priority: "high",
-      //     retryCount: 0,
-      //     maxRetries: 3,
-      //     idempotencyKey: `liquidation-${position.id}-${Date.now()}`,
-      //     requestedAt: new Date().toISOString()
-      //   });
-      // }
+      if (!shouldForceLiquidation) {
+        continue;
+      }
+
+      logger.warn({
+        msg: "Position below maintenance margin",
+        positionId: position.id,
+        userId: position.userId,
+        markPrice: markPrice.toString()
+      });
+
+      await tradeEngine.liquidatePosition(position.id, markPrice);
     }
 
     logger.info({

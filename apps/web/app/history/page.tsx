@@ -1,8 +1,31 @@
 'use client'
 
 import { useState } from 'react'
+import { formatUnits } from 'viem'
 import { useTransactions } from '@/hooks/use-transactions'
+import { useAuth } from '@/hooks/use-auth'
 import type { Transaction, TransactionType } from '@/types/api'
+
+const USDC_DECIMALS = 6
+
+// 将原始值转换为可读的 USDC 金额
+function formatUSDC(value: string | undefined): string {
+  if (!value) return '0'
+  return formatUnits(BigInt(value), USDC_DECIMALS)
+}
+
+function formatUSDCDisplay(value: string | undefined): string {
+  const amount = Number.parseFloat(formatUSDC(value))
+
+  if (!Number.isFinite(amount)) {
+    return '0.00'
+  }
+
+  return amount.toLocaleString('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  })
+}
 
 const TYPE_FILTERS = [
   { label: '全部', value: 'all' },
@@ -24,6 +47,7 @@ const STATUS_OPTIONS = [
 ]
 
 export default function HistoryPage() {
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
   const [typeFilter, setTypeFilter] = useState('all')
   const [statusFilter, setStatusFilter] = useState('all')
   const [startDate, setStartDate] = useState('2026-03-01')
@@ -130,7 +154,7 @@ export default function HistoryPage() {
     const rows = filteredTransactions.map((tx: Transaction) => [
       new Date(tx.createdAt).toISOString(),
       getTypeLabel(tx.type),
-      tx.amount,
+      formatUSDCDisplay(tx.amount),
       getStatusLabel(tx.status),
       tx.txHash || '—',
       tx.confirmedAt ? new Date(tx.confirmedAt).toISOString() : '—',
@@ -145,6 +169,36 @@ export default function HistoryPage() {
     link.href = URL.createObjectURL(blob)
     link.download = `perpdex-history-${startDate}-${endDate}.csv`
     link.click()
+  }
+
+  if (authLoading) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="mb-6">
+          <div className="h-8 bg-pro-gray-200 rounded w-32 mb-2 animate-pulse" />
+          <div className="h-4 bg-pro-gray-200 rounded w-64 animate-pulse" />
+        </div>
+        <div className="bg-white rounded-lg shadow-panel p-6 h-96 animate-pulse" />
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-pro-gray-800 mb-2">历史记录</h1>
+          <p className="text-sm text-pro-gray-500">
+            查看您的所有交易、充值、提现记录
+          </p>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-panel p-12 text-center">
+          <p className="text-pro-gray-500 mb-4">请先连接钱包并登录以查看历史记录</p>
+          <p className="text-sm text-pro-gray-400">点击右上角「连接钱包」按钮开始</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -227,26 +281,24 @@ export default function HistoryPage() {
                 <th className="px-4 py-3 text-left font-semibold">类型</th>
                 <th className="px-4 py-3 text-right font-semibold">金额 (USDC)</th>
                 <th className="px-4 py-3 text-center font-semibold">状态</th>
-                <th className="px-4 py-3 text-left font-semibold">交易哈希</th>
-                <th className="px-4 py-3 text-left font-semibold">确认时间</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 text-pro-gray-400">
+                  <td colSpan={4} className="text-center py-8 text-pro-gray-400">
                     加载中...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 text-pro-accent-red">
+                  <td colSpan={4} className="text-center py-8 text-pro-accent-red">
                     加载失败，请稍后重试
                   </td>
                 </tr>
               ) : !filteredTransactions || filteredTransactions.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-center py-8 text-pro-gray-400">
+                  <td colSpan={4} className="text-center py-8 text-pro-gray-400">
                     暂无记录
                   </td>
                 </tr>
@@ -274,7 +326,7 @@ export default function HistoryPage() {
                       </span>
                     </td>
                     <td className="px-4 py-4 text-right font-mono font-medium">
-                      {parseFloat(tx.amount).toFixed(6)}
+                      {formatUSDCDisplay(tx.amount)}
                     </td>
                     <td className="px-4 py-4 text-center">
                       <span
@@ -284,32 +336,6 @@ export default function HistoryPage() {
                       >
                         {getStatusLabel(tx.status)}
                       </span>
-                    </td>
-                    <td className="px-4 py-4">
-                      {tx.txHash ? (
-                        <a
-                          href={`https://arbiscan.io/tx/${tx.txHash}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-mono text-pro-accent-cyan hover:underline"
-                        >
-                          {tx.txHash.slice(0, 6)}...{tx.txHash.slice(-4)}
-                        </a>
-                      ) : (
-                        <span className="text-pro-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-4 text-sm text-pro-gray-600">
-                      {tx.confirmedAt ? (
-                        <div>
-                          <div>{new Date(tx.confirmedAt).toLocaleDateString('zh-CN')}</div>
-                          <div className="text-xs text-pro-gray-500 font-mono">
-                            {new Date(tx.confirmedAt).toLocaleTimeString('zh-CN')}
-                          </div>
-                        </div>
-                      ) : (
-                        <span className="text-pro-gray-400">—</span>
-                      )}
                     </td>
                   </tr>
                 ))

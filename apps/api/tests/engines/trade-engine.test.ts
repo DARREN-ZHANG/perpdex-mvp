@@ -139,8 +139,8 @@ describe("TradeEngine", () => {
       });
     });
 
-    describe("仓位冲突检查", () => {
-      it("应该在已存在同符号开仓仓位时抛出 'Position already exists' 错误", async () => {
+    describe("多仓支持", () => {
+      it("应该允许在已存在同符号开仓仓位时继续开仓", async () => {
         // 创建一个已存在的 BTC 仓位
         const existingPosition = createMockPosition({
           userId: mockUser.id,
@@ -150,12 +150,14 @@ describe("TradeEngine", () => {
         });
         mockData.positions.set(existingPosition.id, existingPosition);
 
-        await expect(
-          tradeEngine.createMarketOrder(defaultOrderInput)
-        ).rejects.toThrow("Position already exists for this symbol");
+        const result = await tradeEngine.createMarketOrder(defaultOrderInput);
+
+        expect(result.order.status).toBe("FILLED");
+        expect(result.position?.status).toBe("OPEN");
+        expect(Array.from(mockData.positions.values())).toHaveLength(2);
       });
 
-      it("应该在已存在同符号 SHORT 仓位时抛出错误（单仓模式）", async () => {
+      it("应该允许在已存在同符号反向仓位时继续开仓", async () => {
         // 创建一个已存在的 SHORT 仓位
         const shortPosition = createMockPosition({
           userId: mockUser.id,
@@ -165,12 +167,14 @@ describe("TradeEngine", () => {
         });
         mockData.positions.set(shortPosition.id, shortPosition);
 
-        await expect(
-          tradeEngine.createMarketOrder({
-            ...defaultOrderInput,
-            side: "LONG"
-          })
-        ).rejects.toThrow("Position already exists for this symbol");
+        const result = await tradeEngine.createMarketOrder({
+          ...defaultOrderInput,
+          side: "LONG"
+        });
+
+        expect(result.order.status).toBe("FILLED");
+        expect(result.position?.status).toBe("OPEN");
+        expect(Array.from(mockData.positions.values())).toHaveLength(2);
       });
 
       it("应该允许在已有 CLOSED 仓位时开新仓", async () => {
@@ -214,6 +218,7 @@ describe("TradeEngine", () => {
         expect(order.userId).toBe(mockUser.id);
         expect(order.symbol).toBe("BTC");
         expect(order.side).toBe("LONG");
+        expect(order.metadata).toEqual({ action: "OPEN" });
         expect(order.status).toBe("FILLED");
         expect(order.size.toString()).toBe("0.1");
         expect(order.margin).toBe(defaultOrderInput.margin);
@@ -488,6 +493,26 @@ describe("TradeEngine", () => {
         expect(updatedAccount.lockedBalance).toBe(BigInt(0));
       });
 
+      it("应该将最大亏损限制在已锁定保证金内", async () => {
+        const shortPosition = createMockPosition({
+          userId: mockUser.id,
+          side: "SHORT",
+          entryPrice: "50000",
+          positionSize: "0.1",
+          margin: "5000000000",
+          status: "OPEN"
+        });
+        mockData.positions.set(shortPosition.id, shortPosition);
+
+        vi.mocked(marketServiceMock.marketService.getMarkPrice).mockResolvedValue(new Decimal("1000000"));
+
+        await tradeEngine.closePosition(mockUser.id, shortPosition.id);
+
+        const updatedAccount = Array.from(mockData.accounts.values())[0];
+        expect(updatedAccount.availableBalance).toBe(BigInt("5000000000"));
+        expect(updatedAccount.lockedBalance).toBe(BigInt(0));
+      });
+
       it("应该创建保证金释放交易记录", async () => {
         await tradeEngine.closePosition(mockUser.id, testPosition.id);
 
@@ -570,6 +595,10 @@ describe("TradeEngine", () => {
         expect(closeOrder.userId).toBe(mockUser.id);
         expect(closeOrder.positionId).toBe(testPosition.id);
         expect(closeOrder.side).toBe("SHORT"); // Long 仓位平仓是 Short 订单
+        expect(closeOrder.metadata).toEqual({
+          action: "CLOSE",
+          closingPositionSide: "LONG"
+        });
         expect(closeOrder.type).toBe("MARKET");
         expect(closeOrder.status).toBe("FILLED");
         expect(closeOrder.margin).toBe(BigInt(0)); // 平仓不需要保证金

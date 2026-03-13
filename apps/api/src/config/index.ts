@@ -56,6 +56,7 @@ export const config = {
       "https://api.hyperliquid-testnet.xyz"
     ),
     rpcUrl: getEnvVar("RPC_URL", "https://sepolia-rollup.arbitrum.io/rpc"),
+    chainId: getEnvNumber("CHAIN_ID", 421614),
     vaultContractAddress: getEnvVar(
       "VAULT_CONTRACT_ADDRESS",
       "0x0000000000000000000000000000000000000000"

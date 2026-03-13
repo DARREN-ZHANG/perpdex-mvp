@@ -98,6 +98,67 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
+  // GET /api/user/transactions/:transactionId
+  app.get(
+    "/api/user/transactions/:transactionId",
+    { preHandler: [requireAuth] },
+    async (request, reply) => {
+      const user = getJwtUser(request);
+      const params = request.params as { transactionId: string };
+      const transaction = await balanceService.getTransactionDetail(
+        user.id,
+        params.transactionId
+      );
+
+      if (!transaction) {
+        reply.code(404);
+        return {
+          data: null,
+          error: {
+            code: "TRANSACTION_NOT_FOUND",
+            message: "交易记录不存在"
+          },
+          meta: { requestId: request.id }
+        };
+      }
+
+      return {
+        data: transaction,
+        error: null,
+        meta: { requestId: request.id }
+      };
+    }
+  );
+
+  // GET /api/user/orders
+  app.get(
+    "/api/user/orders",
+    { preHandler: [requireAuth] },
+    async (request) => {
+      const user = getJwtUser(request);
+      const query = request.query as {
+        cursor?: string;
+        limit?: string;
+      };
+
+      const limit = query.limit ? Number.parseInt(query.limit, 10) : undefined;
+
+      const result = await balanceService.getOrderHistory(user.id, {
+        cursor: query.cursor,
+        limit
+      });
+
+      return {
+        data: result,
+        error: null,
+        meta: {
+          requestId: request.id,
+          nextCursor: result.nextCursor
+        }
+      };
+    }
+  );
+
   // POST /api/user/withdraw
   app.post(
     "/api/user/withdraw",

@@ -4,7 +4,6 @@ import { useAuth } from '@/hooks/use-auth'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { ConnectButton as WalletButton } from '../wallet/connect-button'
-import { useBalance } from '@/hooks/use-balance'
 
 const navItems = [
   { label: '交易', href: '/' },
@@ -14,13 +13,12 @@ const navItems = [
 
 export function Header() {
   const { isAuthenticated } = useAuth()
-  const { balance } = useBalance()
   const pathname = usePathname()
 
   return (
     <header className="h-16 bg-pro-gray-900 flex items-center justify-between px-6 sticky top-0 z-50">
       <div className="flex items-center gap-10">
-        <Link href="/" className="text-white font-bold text-xl tracking-tight">
+        <Link href="/" className="text-white font-bold text-2xl tracking-tight">
           PerpDex
         </Link>
         <nav className="flex gap-1">
@@ -41,14 +39,6 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-4">
-        {isAuthenticated && balance && (
-          <div className="text-sm text-gray-400">
-            <span className="text-white font-medium">
-              {Number(balance.availableBalance).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-            </span>{' '}
-            USDC
-          </div>
-        )}
         <WalletButton />
       </div>
     </header>

@@ -8,12 +8,30 @@ import {
   createWalletClient,
   http,
   type Address,
-  type Hex
+  type Hex,
+  type Hash,
+  type Chain
 } from "viem";
-import { arbitrumSepolia } from "viem/chains";
+import { arbitrumSepolia, foundry } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import { config } from "../config/index";
 import { logger } from "../utils/logger";
+
+// 根据配置选择链
+function getChain(chainId: number): Chain {
+  if (chainId === 31337) {
+    // 本地 Anvil 链
+    return {
+      ...foundry,
+      id: 31337,
+      name: "Localhost 31337",
+      rpcUrls: {
+        default: { http: ["http://localhost:8545"] }
+      }
+    };
+  }
+  return arbitrumSepolia;
+}
 
 // Vault ABI (仅包含需要的方法)
 const VAULT_ABI = [
@@ -43,30 +61,46 @@ export class BlockchainClient {
   private publicClient: ReturnType<typeof createPublicClient>;
   private walletClient: ReturnType<typeof createWalletClient> | null = null;
   private vaultAddress: Address;
+  private chain: Chain;
 
   constructor() {
     this.vaultAddress = config.external.vaultContractAddress as Address;
+    this.chain = getChain(config.external.chainId);
 
     this.publicClient = createPublicClient({
-      chain: arbitrumSepolia,
+      chain: this.chain,
       transport: http(config.external.rpcUrl)
     });
 
     // Initialize wallet client if private key is available
-    const privateKey = process.env.HEDGE_PRIVATE_KEY;
+    const privateKey =
+      process.env.HEDGE_PRIVATE_KEY ?? process.env.HYPERLIQUID_PRIVATE_KEY;
     if (privateKey) {
       const account = privateKeyToAccount(privateKey as Hex);
       this.walletClient = createWalletClient({
-        chain: arbitrumSepolia,
+        chain: this.chain,
         transport: http(config.external.rpcUrl),
         account
       });
-      logger.info({ msg: "Wallet client initialized" });
+      logger.info({
+        msg: "Wallet client initialized",
+        source: process.env.HEDGE_PRIVATE_KEY
+          ? "HEDGE_PRIVATE_KEY"
+          : "HYPERLIQUID_PRIVATE_KEY"
+      });
     } else {
       logger.warn({
-        msg: "HEDGE_PRIVATE_KEY not set, onchain operations disabled"
+        msg: "No onchain private key set, onchain operations disabled",
+        expectedEnvVars: ["HEDGE_PRIVATE_KEY", "HYPERLIQUID_PRIVATE_KEY"]
       });
     }
+
+    logger.info({
+      msg: "Blockchain client initialized",
+      chainId: this.chain.id,
+      chainName: this.chain.name,
+      vaultAddress: this.vaultAddress
+    });
   }
 
   /**
@@ -86,7 +120,9 @@ export class BlockchainClient {
    */
   async executeWithdraw(userAddress: Address, amount: bigint): Promise<string> {
     if (!this.walletClient) {
-      throw new Error("Wallet client not initialized. Set HEDGE_PRIVATE_KEY");
+      throw new Error(
+        "Wallet client not initialized. Set HEDGE_PRIVATE_KEY or HYPERLIQUID_PRIVATE_KEY"
+      );
     }
 
     const { request } = await this.publicClient.simulateContract({
@@ -114,7 +150,7 @@ export class BlockchainClient {
    */
   async waitForTransaction(txHash: string): Promise<"success" | "reverted"> {
     const receipt = await this.publicClient.waitForTransactionReceipt({
-      hash: txHash as Address
+      hash: txHash as Hash
     });
 
     return receipt.status === "success" ? "success" : "reverted";

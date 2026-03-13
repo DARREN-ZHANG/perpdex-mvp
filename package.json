@@ -15,9 +15,11 @@
     "db:migrate": "pnpm --filter @perpdex/api db:migrate"
   },
   "devDependencies": {
-    "@next/eslint-plugin-next": "^15.5.12",
     "@eslint/js": "^9.25.0",
+    "@next/eslint-plugin-next": "^15.5.12",
     "@types/node": "^24.6.0",
+    "cross-env": "^10.1.0",
+    "dotenv-cli": "^11.0.0",
     "eslint": "^9.25.0",
     "globals": "^16.0.0",
     "turbo": "^2.5.8",

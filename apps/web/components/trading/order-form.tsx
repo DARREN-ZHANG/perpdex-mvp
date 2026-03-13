@@ -1,12 +1,23 @@
 'use client'
 
 import { useState } from 'react'
+import { formatUnits } from 'viem'
 import { useBalance } from '@/hooks/use-balance'
 import { useOrderEstimate } from '@/hooks/use-order-estimate'
 import { useOrders } from '@/hooks/use-orders'
+import { TRADING_CONFIG } from '@/config/constants'
 import { LeverageSlider } from './leverage-slider'
 import { Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import type { OrderSide } from '@/types/trading'
+
+const USDC_DECIMALS = 6
+
+// 将原始值转换为可读的 USDC 金额
+function formatBalance(value: string | undefined): number {
+  if (!value) return 0
+  return parseFloat(formatUnits(BigInt(value), USDC_DECIMALS))
+}
 
 export function OrderForm() {
   const [side, setSide] = useState<OrderSide>('LONG')
@@ -22,19 +33,38 @@ export function OrderForm() {
     side: side === 'LONG' ? 'long' : 'short',
   })
 
-  const availableBalance = balance ? parseFloat(balance.availableBalance) : 0
+  const availableBalance = formatBalance(balance?.availableBalance)
+  const orderSize = estimate.entryPrice > 0
+    ? (Number(margin) * leverage / estimate.entryPrice).toFixed(4)
+    : '0.0000'
+  const marginValue = Number(margin)
+  const isBelowMinMargin = marginValue > 0 && marginValue < TRADING_CONFIG.MIN_MARGIN
+  const hasInvalidSize = Number(orderSize) <= 0
 
   const handleSubmit = async () => {
-    if (!margin || Number(margin) <= 0) return
-    if (Number(margin) > availableBalance) return
+    if (!margin || marginValue <= 0) return
+    if (isBelowMinMargin || marginValue > availableBalance || hasInvalidSize) return
 
     setIsSubmitting(true)
     try {
-      await submitOrder({
+      const response = await submitOrder({
         side,
-        size: (Number(margin) * leverage / estimate.entryPrice).toFixed(4),
+        size: orderSize,
         margin,
         leverage,
+      })
+
+      if (!response.success) {
+        toast.error('开仓失败', {
+          description: response.error?.message || '请稍后重试',
+          duration: 5000,
+        })
+        return
+      }
+
+      toast.success('开仓成功', {
+        description: `已提交${side === 'LONG' ? '开多' : '开空'} BTC 订单`,
+        duration: 3000,
       })
       setMargin('')
     } finally {
@@ -68,10 +98,10 @@ export function OrderForm() {
         </button>
       </div>
 
-      {/* Margin input */}
+      {/* Amount input */}
       <div className="mb-4">
         <div className="flex justify-between text-sm text-pro-gray-500 mb-1.5">
-          <span>保证金</span>
+          <span>金额</span>
           <span className="text-pro-accent-cyan">
             可用: {availableBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })} USDC
           </span>
@@ -102,7 +132,14 @@ export function OrderForm() {
       {/* Submit button */}
       <button
         onClick={handleSubmit}
-        disabled={!margin || Number(margin) <= 0 || Number(margin) > availableBalance || isSubmitting}
+        disabled={
+          !margin ||
+          marginValue <= 0 ||
+          isBelowMinMargin ||
+          marginValue > availableBalance ||
+          hasInvalidSize ||
+          isSubmitting
+        }
         className={`w-full py-3.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
           side === 'LONG'
             ? 'bg-pro-accent-green text-white hover:bg-pro-accent-green/90'
@@ -119,6 +156,16 @@ export function OrderForm() {
       {/* Order estimate summary */}
       {Number(margin) > 0 && (
         <div className="mt-5 pt-5 border-t border-pro-gray-100 space-y-2">
+          {isBelowMinMargin && (
+            <div className="text-sm text-pro-accent-red">
+              最小金额为 {TRADING_CONFIG.MIN_MARGIN} USDC
+            </div>
+          )}
+          {!isBelowMinMargin && hasInvalidSize && (
+            <div className="text-sm text-pro-accent-red">
+              当前金额过小，计算后的下单数量为 0，请提高金额
+            </div>
+          )}
           <div className="flex justify-between text-sm">
             <span className="text-pro-gray-500">仓位大小</span>
             <span className="font-mono font-medium">

@@ -13,6 +13,9 @@ class SocketClient {
   private socket: Socket | null = null
   private static instance: SocketClient
   private subscriptions: Map<string, Set<(data: unknown) => void>> = new Map()
+  private channelBindings: Map<string, (data: unknown) => void> = new Map()
+  private userRoomRefCounts: Map<string, number> = new Map()
+  private marketRefCounts: Map<string, number> = new Map()
   private reconnectAttempts = 0
 
   // 单例模式
@@ -70,23 +73,6 @@ class SocketClient {
       console.error('[Socket] Error:', error)
     })
 
-    // 处理服务器推送的数据
-    this.socket.on('market:update', (data: MarketData) => {
-      this.emit('market:update', data)
-    })
-
-    this.socket.on('candle:update', (data: { symbol: string; timeframe: string; data: CandleData }) => {
-      this.emit('candle:update', data)
-    })
-
-    this.socket.on('position:update', (data: PositionUpdate) => {
-      this.emit('position:update', data)
-    })
-
-    this.socket.on('balance:update', (data: BalanceUpdate) => {
-      this.emit('balance:update', data)
-    })
-
     this.socket.on('notification', (data: TradeNotification) => {
       this.emit('notification', data)
     })
@@ -108,16 +94,69 @@ class SocketClient {
 
   // 重新订阅所有频道
   private resubscribeAll(): void {
-    // 这里可以根据需要重新订阅市场数据等
     console.log('[Socket] Resubscribing to channels...')
+    this.marketRefCounts.forEach((count, symbol) => {
+      if (count > 0) {
+        this.socket?.emit('subscribe:market', { symbol })
+      }
+    })
+    this.userRoomRefCounts.forEach((count, userId) => {
+      if (count > 0) {
+        this.socket?.emit('subscribe:position', { userId })
+      }
+    })
+  }
+
+  private bindChannel(channel: string, eventName: string): void {
+    if (!this.socket || this.channelBindings.has(channel)) return
+
+    const handler = (data: unknown) => {
+      this.emit(eventName, data)
+    }
+
+    this.socket.on(channel, handler)
+    this.channelBindings.set(channel, handler)
+  }
+
+  private unbindChannel(channel: string): void {
+    if (!this.socket) return
+
+    const handler = this.channelBindings.get(channel)
+    if (!handler) return
+
+    this.socket.off(channel, handler)
+    this.channelBindings.delete(channel)
+  }
+
+  private retainUserRoom(userId: string): void {
+    const nextCount = (this.userRoomRefCounts.get(userId) ?? 0) + 1
+    this.userRoomRefCounts.set(userId, nextCount)
+
+    if (nextCount === 1) {
+      this.socket?.emit('subscribe:position', { userId })
+    }
+  }
+
+  private releaseUserRoom(userId: string): void {
+    const currentCount = this.userRoomRefCounts.get(userId) ?? 0
+    if (currentCount <= 1) {
+      this.userRoomRefCounts.delete(userId)
+      this.socket?.emit('unsubscribe:position', { userId })
+      return
+    }
+
+    this.userRoomRefCounts.set(userId, currentCount - 1)
   }
 
   // 订阅市场行情
   subscribeMarket(symbol: string, callback: (data: MarketData) => void): () => void {
     const eventName = `market:${symbol}`
+    const channel = `market:${symbol}:update`
 
     if (!this.subscriptions.has(eventName)) {
       this.subscriptions.set(eventName, new Set())
+      this.bindChannel(channel, eventName)
+      this.marketRefCounts.set(symbol, (this.marketRefCounts.get(symbol) ?? 0) + 1)
       this.socket?.emit('subscribe:market', { symbol })
     }
 
@@ -128,7 +167,14 @@ class SocketClient {
     return () => {
       this.subscriptions.get(eventName)?.delete(wrappedCallback)
       if (this.subscriptions.get(eventName)?.size === 0) {
-        this.socket?.emit('unsubscribe:market', { symbol })
+        const currentCount = this.marketRefCounts.get(symbol) ?? 0
+        if (currentCount <= 1) {
+          this.marketRefCounts.delete(symbol)
+          this.socket?.emit('unsubscribe:market', { symbol })
+        } else {
+          this.marketRefCounts.set(symbol, currentCount - 1)
+        }
+        this.unbindChannel(channel)
         this.subscriptions.delete(eventName)
       }
     }
@@ -162,10 +208,12 @@ class SocketClient {
   // 订阅用户仓位更新
   subscribePositions(userId: string, callback: (data: PositionUpdate) => void): () => void {
     const eventName = `position:${userId}`
+    const channel = `position:${userId}:update`
 
     if (!this.subscriptions.has(eventName)) {
       this.subscriptions.set(eventName, new Set())
-      this.socket?.emit('subscribe:positions', { userId })
+      this.bindChannel(channel, eventName)
+      this.retainUserRoom(userId)
     }
 
     const wrappedCallback = (data: unknown) => callback(data as PositionUpdate)
@@ -174,7 +222,8 @@ class SocketClient {
     return () => {
       this.subscriptions.get(eventName)?.delete(wrappedCallback)
       if (this.subscriptions.get(eventName)?.size === 0) {
-        this.socket?.emit('unsubscribe:positions', { userId })
+        this.unbindChannel(channel)
+        this.releaseUserRoom(userId)
         this.subscriptions.delete(eventName)
       }
     }
@@ -183,10 +232,12 @@ class SocketClient {
   // 订阅余额更新
   subscribeBalance(userId: string, callback: (data: BalanceUpdate) => void): () => void {
     const eventName = `balance:${userId}`
+    const channel = `balance:${userId}:update`
 
     if (!this.subscriptions.has(eventName)) {
       this.subscriptions.set(eventName, new Set())
-      this.socket?.emit('subscribe:balance', { userId })
+      this.bindChannel(channel, eventName)
+      this.retainUserRoom(userId)
     }
 
     const wrappedCallback = (data: unknown) => callback(data as BalanceUpdate)
@@ -195,7 +246,8 @@ class SocketClient {
     return () => {
       this.subscriptions.get(eventName)?.delete(wrappedCallback)
       if (this.subscriptions.get(eventName)?.size === 0) {
-        this.socket?.emit('unsubscribe:balance', { userId })
+        this.unbindChannel(channel)
+        this.releaseUserRoom(userId)
         this.subscriptions.delete(eventName)
       }
     }
@@ -220,6 +272,9 @@ class SocketClient {
   // 断开连接
   disconnect(): void {
     this.subscriptions.clear()
+    this.channelBindings.clear()
+    this.userRoomRefCounts.clear()
+    this.marketRefCounts.clear()
     this.socket?.disconnect()
     this.socket = null
   }

@@ -5,16 +5,18 @@
  */
 import { prisma } from "../db/client";
 import Decimal from "decimal.js";
+import { Prisma } from "@prisma/client";
 import { logger } from "../utils/logger";
 import { marketService } from "../services/market.service";
 import { addHedgeTask } from "../queue/queue";
+import type { HedgeJobData } from "../queue/types";
 import {
   calculatePositionMetrics,
-  calculateLiquidationPrice,
   type PositionInput,
   type MarkPriceInput
 } from "./pnl-calculator";
 import { emitPositionUpdate, emitBalanceUpdate } from "../ws/index";
+import { AppError } from "../errors/app-error";
 
 export interface CreateOrderInput {
   userId: string;
@@ -55,6 +57,45 @@ export interface ClosePositionResult {
  * 交易引擎类
  */
 export class TradeEngine {
+  private getPositionLeverage(position: { metadata: Prisma.JsonValue | null }): number {
+    const metadata = position.metadata as { leverage?: number } | null;
+    if (
+      metadata &&
+      typeof metadata === "object" &&
+      typeof metadata.leverage === "number"
+    ) {
+      return metadata.leverage;
+    }
+
+    return 10;
+  }
+
+  private async enqueueHedgeTask(payload: HedgeJobData): Promise<void> {
+    try {
+      await addHedgeTask(payload);
+      await prisma.hedgeOrder.update({
+        where: { taskId: payload.taskId },
+        data: {
+          errorMessage: null
+        }
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      logger.error({
+        msg: "Failed to add hedge task to queue",
+        taskId: payload.taskId,
+        error: errorMessage
+      });
+
+      await prisma.hedgeOrder.update({
+        where: { taskId: payload.taskId },
+        data: {
+          errorMessage: `QUEUE_ENQUEUE_FAILED: ${errorMessage}`
+        }
+      });
+    }
+  }
+
   /**
    * 创建市价订单
    */
@@ -64,31 +105,15 @@ export class TradeEngine {
     // 1. 获取当前价格
     const markPrice = await marketService.getMarkPrice(symbol);
 
-    // 2. 验证用户余额
-    const account = await prisma.account.findUnique({
-      where: {
-        userId_asset: { userId, asset: "USDC" }
-      }
-    });
-
-    if (!account || account.availableBalance < margin) {
-      throw new Error("Insufficient balance");
+    if (size.lte(0)) {
+      throw new AppError("VALIDATION_ERROR", "Order size must be greater than zero");
     }
 
-    // 3. 检查是否已有同方向仓位（单仓模式）
-    const existingPosition = await prisma.position.findFirst({
-      where: {
-        userId,
-        symbol: symbol as "BTC",
-        status: "OPEN"
-      }
-    });
-
-    if (existingPosition) {
-      throw new Error("Position already exists for this symbol");
+    if (margin <= BigInt(0)) {
+      throw new AppError("VALIDATION_ERROR", "Margin must be greater than zero");
     }
 
-    // 4. 计算清算价格
+    // 2. 计算清算价格
     // margin 使用 USDC (6 decimals)，需要转换为 USD 单位
     const marginInUsd = new Decimal(margin.toString()).div(new Decimal(1_000_000));
     const positionInput: PositionInput = {
@@ -99,12 +124,38 @@ export class TradeEngine {
       leverage
     };
 
-    const liquidationResult = calculateLiquidationPrice(positionInput);
+    const metrics = calculatePositionMetrics(positionInput, { markPrice });
+    const hedgeSide = side === "LONG" ? "SHORT" : "LONG";
+    const hedgeTaskId = crypto.randomUUID();
+    const hedgePayload: HedgeJobData = {
+      taskId: hedgeTaskId,
+      source: "ORDER_FILL",
+      userId,
+      symbol: "BTC",
+      side: hedgeSide,
+      size: size.toString(),
+      referencePrice: markPrice.toString(),
+      priority: "NORMAL",
+      retryCount: 0,
+      maxRetries: 3,
+      idempotencyKey: clientOrderId ? `hedge-${clientOrderId}` : `hedge-open-${hedgeTaskId}`,
+      requestedAt: new Date().toISOString()
+    };
 
-    // 5. 事务：锁定保证金、创建订单、创建仓位
+    // 3. 事务：锁定保证金、创建订单、创建仓位、记录对冲意图
     const result = await prisma.$transaction(async (tx) => {
+      const account = await tx.account.findUnique({
+        where: {
+          userId_asset: { userId, asset: "USDC" }
+        }
+      });
+
+      if (!account || account.availableBalance < margin) {
+        throw new AppError("INSUFFICIENT_BALANCE", "Insufficient balance");
+      }
+
       // 锁定保证金
-      await tx.account.update({
+      const updatedAccount = await tx.account.update({
         where: { id: account!.id },
         data: {
           availableBalance: { decrement: margin },
@@ -136,7 +187,10 @@ export class TradeEngine {
           executedPrice: markPrice,
           status: "FILLED",
           filledAt: new Date(),
-          clientOrderId
+          clientOrderId,
+          metadata: {
+            action: "OPEN"
+          }
         }
       });
 
@@ -150,10 +204,13 @@ export class TradeEngine {
           entryPrice: markPrice,
           markPrice,
           unrealizedPnl: new Decimal(0),
-          liquidationPrice: liquidationResult.liquidationPrice,
+          liquidationPrice: metrics.liquidationPrice,
           margin,
           status: "OPEN",
-          riskLevel: "SAFE"
+          riskLevel: metrics.riskLevel,
+          metadata: {
+            leverage
+          }
         }
       });
 
@@ -163,7 +220,34 @@ export class TradeEngine {
         data: { positionId: position.id }
       });
 
-      return { order, position };
+      const payload = {
+        ...hedgePayload,
+        orderId: order.id,
+        positionId: position.id
+      };
+
+      await tx.hedgeOrder.create({
+        data: {
+          taskId: hedgeTaskId,
+          userId,
+          orderId: order.id,
+          positionId: position.id,
+          symbol: "BTC",
+          side: hedgeSide,
+          size,
+          referencePrice: new Decimal(markPrice.toString()),
+          trigger: "OPEN",
+          priority: 5,
+          status: "PENDING",
+          retryCount: 0,
+          maxRetryCount: 3,
+          payload
+        }
+      });
+
+      return { order, position, updatedAccount, hedgePayload: payload };
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable
     });
 
     logger.info({
@@ -192,58 +276,14 @@ export class TradeEngine {
 
     // 推送余额更新
     emitBalanceUpdate(userId, {
-      availableBalance: (account.availableBalance - margin).toString(),
-      lockedBalance: (account.lockedBalance + margin).toString(),
-      totalBalance: account.availableBalance.toString()
+      availableBalance: result.updatedAccount.availableBalance.toString(),
+      lockedBalance: result.updatedAccount.lockedBalance.toString(),
+      totalBalance: (
+        result.updatedAccount.availableBalance + result.updatedAccount.lockedBalance
+      ).toString()
     });
 
-    // 7. 创建对冲任务（异步）
-    // 对冲方向：用户做多 -> 平台做空，用户做空 -> 平台做多
-    const hedgeSide = side === "LONG" ? "SHORT" : "LONG";
-    const hedgeTaskId = crypto.randomUUID();
-
-    // 创建 HedgeOrder 数据库记录
-    await prisma.hedgeOrder.create({
-      data: {
-        taskId: hedgeTaskId,
-        userId,
-        orderId: result.order.id,
-        positionId: result.position.id,
-        symbol: "BTC",
-        side: hedgeSide,
-        size,
-        referencePrice: new Decimal(markPrice.toString()),
-        trigger: "OPEN",
-        priority: 5,
-        status: "PENDING",
-        payload: {}
-      }
-    });
-
-    // 添加对冲任务到队列（异步，不阻塞用户请求）
-    addHedgeTask({
-      taskId: hedgeTaskId,
-      source: "ORDER_FILL",
-      userId,
-      orderId: result.order.id,
-      positionId: result.position.id,
-      symbol: "BTC",
-      side: hedgeSide.toUpperCase() as "LONG" | "SHORT",
-      size: size.toString(),
-      referencePrice: markPrice.toString(),
-      priority: "NORMAL",
-      retryCount: 0,
-      maxRetries: 3,
-      idempotencyKey: `hedge-${result.order.id}`,
-      requestedAt: new Date().toISOString()
-    }).catch((error) => {
-      logger.error({
-        msg: "Failed to add hedge task to queue",
-        orderId: result.order.id,
-        hedgeTaskId,
-        error: error instanceof Error ? error.message : "Unknown error"
-      });
-    });
+    void this.enqueueHedgeTask(result.hedgePayload);
 
     return {
       order: {
@@ -276,11 +316,14 @@ export class TradeEngine {
     });
 
     if (!position) {
-      throw new Error("Position not found or already closed");
+      throw new AppError("POSITION_NOT_FOUND", "Position not found or already closed", {
+        statusCode: 404
+      });
     }
 
     // 2. 获取当前价格
     const markPrice = await marketService.getMarkPrice(position.symbol);
+    const leverage = this.getPositionLeverage(position);
 
     // 3. 计算 PnL
     // margin 使用 USDC (6 decimals)，需要转换为 USD 单位
@@ -290,7 +333,7 @@ export class TradeEngine {
       positionSize: new Decimal(position.positionSize.toString()),
       entryPrice: new Decimal(position.entryPrice.toString()),
       margin: marginInUsd,
-      leverage: 10 // TODO: 从 position 获取
+      leverage
     };
 
     const marketInput: MarkPriceInput = { markPrice };
@@ -299,8 +342,13 @@ export class TradeEngine {
     const realizedPnl = metrics.unrealizedPnl;
     // PnL 以 USD 为单位，需要转换为 USDC (6 decimals) 才能与 margin 相加
     const realizedPnlInUsdc = realizedPnl.times(new Decimal(1_000_000));
-    const marginReturn = new Decimal(position.margin.toString()).plus(realizedPnlInUsdc);
+    const cappedPnlInUsdc = Decimal.max(
+      realizedPnlInUsdc,
+      new Decimal(position.margin.toString()).negated()
+    );
+    const marginReturn = new Decimal(position.margin.toString()).plus(cappedPnlInUsdc);
     const balanceChange = BigInt(marginReturn.floor().toString());
+    const hedgeTaskId = crypto.randomUUID();
 
     // 4. 事务：更新仓位、创建平仓订单、释放保证金
     const result = await prisma.$transaction(async (tx) => {
@@ -314,10 +362,14 @@ export class TradeEngine {
           type: "MARKET",
           size: position.positionSize,
           margin: BigInt(0), // 平仓不需要额外保证金
-          leverage: 10, // TODO: 从仓位元数据获取
+          leverage,
           executedPrice: markPrice,
           status: "FILLED",
-          filledAt: new Date()
+          filledAt: new Date(),
+          metadata: {
+            action: "CLOSE",
+            closingPositionSide: position.side
+          }
         }
       });
 
@@ -340,11 +392,13 @@ export class TradeEngine {
       });
 
       if (!account) {
-        throw new Error("Account not found");
+        throw new AppError("ACCOUNT_NOT_FOUND", "Account not found", {
+          statusCode: 404
+        });
       }
 
       // 释放保证金 + 结算盈亏
-      await tx.account.update({
+      const updatedAccount = await tx.account.update({
         where: { id: account.id },
         data: {
           lockedBalance: { decrement: position.margin },
@@ -364,19 +418,57 @@ export class TradeEngine {
       });
 
       // 如果有盈亏，创建盈亏交易记录
-      if (!realizedPnl.isZero()) {
+      if (!cappedPnlInUsdc.isZero()) {
         await tx.transaction.create({
           data: {
             userId,
             accountId: account.id,
             type: "REALIZED_PNL",
-            amount: BigInt(realizedPnlInUsdc.abs().floor().toString()),
+            amount: BigInt(cappedPnlInUsdc.abs().floor().toString()),
             status: "CONFIRMED"
           }
         });
       }
 
-      return { order };
+      const payload: HedgeJobData = {
+        taskId: hedgeTaskId,
+        source: "POSITION_CLOSE",
+        userId,
+        orderId: order.id,
+        positionId,
+        symbol: "BTC",
+        side: position.side,
+        size: position.positionSize.toString(),
+        referencePrice: markPrice.toString(),
+        priority: "NORMAL",
+        retryCount: 0,
+        maxRetries: 3,
+        idempotencyKey: `hedge-close-${positionId}`,
+        requestedAt: new Date().toISOString()
+      };
+
+      await tx.hedgeOrder.create({
+        data: {
+          taskId: hedgeTaskId,
+          userId,
+          orderId: order.id,
+          positionId,
+          symbol: position.symbol,
+          side: position.side,
+          size: position.positionSize,
+          referencePrice: new Decimal(markPrice.toString()),
+          trigger: "CLOSE",
+          priority: 5,
+          status: "PENDING",
+          retryCount: 0,
+          maxRetryCount: 3,
+          payload
+        }
+      });
+
+      return { order, updatedAccount, hedgePayload: payload };
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable
     });
 
     logger.info({
@@ -401,57 +493,14 @@ export class TradeEngine {
 
     // 推送余额更新
     emitBalanceUpdate(userId, {
-      availableBalance: balanceChange.toString(),
-      lockedBalance: "0", // 保证金已释放
-      totalBalance: balanceChange.toString()
+      availableBalance: result.updatedAccount.availableBalance.toString(),
+      lockedBalance: result.updatedAccount.lockedBalance.toString(),
+      totalBalance: (
+        result.updatedAccount.availableBalance + result.updatedAccount.lockedBalance
+      ).toString()
     });
 
-    // 6. 创建对冲任务（异步）
-    // 平仓时平台也需要平掉对冲仓位，所以对冲方向是同向
-    const hedgeTaskId = crypto.randomUUID();
-
-    // 创建 HedgeOrder 数据库记录
-    await prisma.hedgeOrder.create({
-      data: {
-        taskId: hedgeTaskId,
-        userId,
-        orderId: result.order.id,
-        positionId,
-        symbol: position.symbol,
-        side: position.side,
-        size: position.positionSize,
-        referencePrice: new Decimal(markPrice.toString()),
-        trigger: "CLOSE",
-        priority: 5,
-        status: "PENDING",
-        payload: {}
-      }
-    });
-
-    // 添加对冲任务到队列（异步，不阻塞用户请求）
-    addHedgeTask({
-      taskId: hedgeTaskId,
-      source: "POSITION_CLOSE",
-      userId,
-      orderId: result.order.id,
-      positionId,
-      symbol: "BTC",
-      side: position.side.toUpperCase() as "LONG" | "SHORT",
-      size: position.positionSize.toString(),
-      referencePrice: markPrice.toString(),
-      priority: "NORMAL",
-      retryCount: 0,
-      maxRetries: 3,
-      idempotencyKey: `hedge-close-${positionId}`,
-      requestedAt: new Date().toISOString()
-    }).catch((error) => {
-      logger.error({
-        msg: "Failed to add hedge task to queue",
-        positionId,
-        hedgeTaskId,
-        error: error instanceof Error ? error.message : "Unknown error"
-      });
-    });
+    void this.enqueueHedgeTask(result.hedgePayload);
 
     return {
       order: {
@@ -488,8 +537,16 @@ export class TradeEngine {
       markPrice: markPrice.toString()
     });
 
+    const hedgeTaskId = crypto.randomUUID();
+
     // 类似 closePosition，但标记为 LIQUIDATED
     await prisma.$transaction(async (tx) => {
+      const account = await tx.account.findUnique({
+        where: {
+          userId_asset: { userId: position.userId, asset: "USDC" }
+        }
+      });
+
       await tx.position.update({
         where: { id: positionId },
         data: {
@@ -512,11 +569,45 @@ export class TradeEngine {
       await tx.transaction.create({
         data: {
           userId: position.userId,
+          accountId: account?.id,
           type: "LIQUIDATION",
           amount: position.margin,
           status: "CONFIRMED"
         }
       });
+      await tx.hedgeOrder.create({
+        data: {
+          taskId: hedgeTaskId,
+          userId: position.userId,
+          positionId,
+          symbol: position.symbol,
+          side: position.side,
+          size: position.positionSize,
+          referencePrice: new Decimal(markPrice.toString()),
+          trigger: "LIQUIDATION",
+          priority: 1,
+          status: "PENDING",
+          retryCount: 0,
+          maxRetryCount: 3,
+          payload: {
+            taskId: hedgeTaskId,
+            source: "LIQUIDATION",
+            userId: position.userId,
+            positionId,
+            symbol: "BTC",
+            side: position.side,
+            size: position.positionSize.toString(),
+            referencePrice: markPrice.toString(),
+            priority: "HIGH",
+            retryCount: 0,
+            maxRetries: 3,
+            idempotencyKey: `hedge-liquidation-${positionId}`,
+            requestedAt: new Date().toISOString()
+          }
+        }
+      });
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable
     });
 
     // 推送清算更新
@@ -529,35 +620,13 @@ export class TradeEngine {
       }
     });
 
-    // 创建清算对冲任务（高优先级）
-    // 清算时平台也需要平掉对冲仓位，所以对冲方向是同向
-    const hedgeTaskId = crypto.randomUUID();
-
-    // 创建 HedgeOrder 数据库记录
-    await prisma.hedgeOrder.create({
-      data: {
-        taskId: hedgeTaskId,
-        userId: position.userId,
-        positionId,
-        symbol: position.symbol,
-        side: position.side,
-        size: position.positionSize,
-        referencePrice: new Decimal(markPrice.toString()),
-        trigger: "LIQUIDATION",
-        priority: 1,
-        status: "PENDING",
-        payload: {}
-      }
-    });
-
-    // 添加高优先级对冲任务到队列
-    await addHedgeTask({
+    await this.enqueueHedgeTask({
       taskId: hedgeTaskId,
       source: "LIQUIDATION",
       userId: position.userId,
       positionId,
       symbol: "BTC",
-      side: position.side.toUpperCase() as "LONG" | "SHORT",
+      side: position.side,
       size: position.positionSize.toString(),
       referencePrice: markPrice.toString(),
       priority: "HIGH",

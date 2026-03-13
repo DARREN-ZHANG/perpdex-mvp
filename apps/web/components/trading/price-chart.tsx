@@ -1,7 +1,10 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { useBinancePrice } from '@/hooks/use-binance-price'
+import {
+  DEFAULT_TRADINGVIEW_SYMBOL,
+  type BinancePriceData,
+} from '@/lib/binance-market'
 
 const TIMEFRAMES = [
   { label: '15m', value: '15' },
@@ -10,10 +13,13 @@ const TIMEFRAMES = [
   { label: '1D', value: 'D' },
 ]
 
-export function PriceChart() {
+export interface PriceChartProps {
+  priceData: BinancePriceData | null
+}
+
+export function PriceChart({ priceData }: PriceChartProps) {
   const chartRef = useRef<HTMLDivElement>(null)
   const [timeframe, setTimeframe] = useState('15')
-  const { data: priceData } = useBinancePrice('BTCUSDT')
 
   useEffect(() => {
     if (!chartRef.current) return
@@ -34,7 +40,7 @@ export function PriceChart() {
       if (typeof window !== 'undefined' && win.TradingView) {
         new win.TradingView.widget({
           autosize: true,
-          symbol: 'BINANCE:BTCUSDT',
+          symbol: DEFAULT_TRADINGVIEW_SYMBOL,
           interval: timeframe,
           timezone: 'Etc/UTC',
           theme: 'light',
@@ -66,7 +72,6 @@ export function PriceChart() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
       <div className="flex items-center gap-4 px-4 py-2 border-b border-pro-gray-100">
         {TIMEFRAMES.map((tf) => (
           <button
@@ -82,15 +87,14 @@ export function PriceChart() {
           </button>
         ))}
         <span className="ml-auto text-pro-accent-cyan font-medium text-sm">
-          BTC/USD
+          BTC/USDT
         </span>
       </div>
 
-      {/* Chart Area */}
       <div className="flex-1 relative">
         {priceData && priceData.price > 0 && (
           <div className="absolute top-4 left-4 z-10 bg-white/95 rounded-lg shadow-float p-3">
-            <div className="text-sm text-pro-gray-500 mb-1">BTC / USD</div>
+            <div className="text-sm text-pro-gray-500 mb-1">BTC / USDT</div>
             <div className="text-2xl font-bold font-mono text-pro-gray-800">
               {priceData.price.toLocaleString('en-US', { minimumFractionDigits: 2 })}
             </div>

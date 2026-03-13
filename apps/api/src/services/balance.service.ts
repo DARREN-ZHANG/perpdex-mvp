@@ -4,7 +4,15 @@
  * 处理账户余额查询和历史记录
  */
 import { prisma } from "../db/client";
-import { logger } from "../utils/logger";
+
+type TransactionFilterType =
+  | "DEPOSIT"
+  | "WITHDRAW"
+  | "MARGIN_LOCK"
+  | "MARGIN_RELEASE"
+  | "REALIZED_PNL"
+  | "FEE"
+  | "LIQUIDATION";
 
 export interface BalanceResult {
   userId: string;
@@ -21,6 +29,22 @@ export interface TransactionHistoryItem {
   amount: string;
   status: string;
   txHash: string | null;
+  createdAt: string;
+  updatedAt: string;
+  confirmedAt?: string;
+}
+
+export interface OrderHistoryItem {
+  id: string;
+  symbol: string;
+  side: string;
+  action: "OPEN" | "CLOSE";
+  size: string;
+  margin: string;
+  leverage: number;
+  status: string;
+  executedPrice?: string;
+  failureMessage?: string;
   createdAt: string;
 }
 
@@ -93,12 +117,12 @@ export class BalanceService {
 
     const where: {
       userId: string;
-      type?: { in: Array<"DEPOSIT" | "WITHDRAW" | "MARGIN_LOCK" | "MARGIN_RELEASE" | "REALIZED_PNL" | "FEE" | "LIQUIDATION"> };
+      type?: { in: TransactionFilterType[] };
       id?: { lt: string };
     } = { userId };
 
     if (query.type) {
-      where.type = { in: [query.type as any] };
+      where.type = { in: [query.type as TransactionFilterType] };
     }
 
     if (query.cursor) {
@@ -117,11 +141,99 @@ export class BalanceService {
       amount: tx.amount.toString(),
       status: tx.status,
       txHash: tx.txHash,
-      createdAt: tx.createdAt.toISOString()
+      createdAt: tx.createdAt.toISOString(),
+      updatedAt: tx.updatedAt.toISOString(),
+      confirmedAt: tx.confirmedAt?.toISOString()
     }));
 
     const nextCursor =
       transactions.length > limit ? transactions[limit - 1].id : undefined;
+
+    return { items, nextCursor };
+  }
+
+  /**
+   * 获取单条交易详情
+   */
+  async getTransactionDetail(
+    userId: string,
+    transactionId: string
+  ): Promise<TransactionHistoryItem | null> {
+    const transaction = await prisma.transaction.findFirst({
+      where: {
+        id: transactionId,
+        userId
+      }
+    });
+
+    if (!transaction) {
+      return null;
+    }
+
+    return {
+      id: transaction.id,
+      type: transaction.type,
+      amount: transaction.amount.toString(),
+      status: transaction.status,
+      txHash: transaction.txHash,
+      createdAt: transaction.createdAt.toISOString(),
+      updatedAt: transaction.updatedAt.toISOString(),
+      confirmedAt: transaction.confirmedAt?.toISOString()
+    };
+  }
+
+  /**
+   * 获取订单历史
+   */
+  async getOrderHistory(
+    userId: string,
+    query: Omit<HistoryQuery, "type">
+  ): Promise<{ items: OrderHistoryItem[]; nextCursor?: string }> {
+    const limit = Math.min(query.limit ?? 20, 100);
+
+    const where: {
+      userId: string;
+      id?: { lt: string };
+    } = { userId };
+
+    if (query.cursor) {
+      where.id = { lt: query.cursor };
+    }
+
+    const orders = await prisma.order.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: limit + 1
+    });
+
+    const items = orders.slice(0, limit).map((order) => {
+      const action: "OPEN" | "CLOSE" =
+        order.metadata &&
+        typeof order.metadata === "object" &&
+        "action" in order.metadata &&
+        (order.metadata.action === "OPEN" || order.metadata.action === "CLOSE")
+          ? order.metadata.action
+          : order.margin === BigInt(0)
+            ? "CLOSE"
+            : "OPEN";
+
+      return {
+      id: order.id,
+      symbol: order.symbol,
+      side: order.side,
+      action,
+      size: order.size.toString(),
+      margin: order.margin.toString(),
+      leverage: order.leverage,
+      status: order.status,
+      executedPrice: order.executedPrice?.toString(),
+      failureMessage: order.failureMessage ?? undefined,
+      createdAt: order.createdAt.toISOString()
+      };
+    });
+
+    const nextCursor =
+      orders.length > limit ? orders[limit - 1].id : undefined;
 
     return { items, nextCursor };
   }

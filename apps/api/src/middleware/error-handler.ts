@@ -5,6 +5,7 @@
  */
 import type { FastifyError, FastifyReply, FastifyRequest } from "fastify";
 import { ZodError } from "zod";
+import { AppError } from "../errors/app-error";
 
 interface ApiError {
   code: string;
@@ -16,6 +17,10 @@ interface ApiError {
 function mapErrorToApiCode(error: unknown): string {
   if (error instanceof ZodError) {
     return "VALIDATION_ERROR";
+  }
+
+  if (error instanceof AppError) {
+    return error.code;
   }
 
   if (error instanceof Error) {
@@ -58,6 +63,9 @@ export function formatError(error: unknown, requestId?: string): ApiError {
     };
   } else if (error instanceof Error) {
     message = error.message;
+    if (error instanceof AppError) {
+      details = error.details;
+    }
   } else {
     message = "An unexpected error occurred";
   }
@@ -89,34 +97,38 @@ export async function errorHandler(
   });
 
   // Determine status code
-  let statusCode = 500;
-  switch (apiError.code) {
-    case "UNAUTHORIZED":
-      statusCode = 401;
-      break;
-    case "FORBIDDEN":
-      statusCode = 403;
-      break;
-    case "VALIDATION_ERROR":
-      statusCode = 400;
-      break;
-    case "POSITION_NOT_FOUND":
-      statusCode = 404;
-      break;
-    case "CONFLICT":
-      statusCode = 409;
-      break;
-    case "RATE_LIMITED":
-      statusCode = 429;
-      break;
-    case "INSUFFICIENT_BALANCE":
-    case "ORDER_EXECUTION_FAILED":
-    case "RISK_LIMIT_EXCEEDED":
-      statusCode = 400;
-      break;
-    case "SERVICE_UNAVAILABLE":
-      statusCode = 503;
-      break;
+  let statusCode = error instanceof AppError ? error.statusCode : 500;
+  if (!(error instanceof AppError)) {
+    switch (apiError.code) {
+      case "UNAUTHORIZED":
+        statusCode = 401;
+        break;
+      case "FORBIDDEN":
+        statusCode = 403;
+        break;
+      case "VALIDATION_ERROR":
+        statusCode = 400;
+        break;
+      case "POSITION_NOT_FOUND":
+      case "ACCOUNT_NOT_FOUND":
+        statusCode = 404;
+        break;
+      case "CONFLICT":
+        statusCode = 409;
+        break;
+      case "RATE_LIMITED":
+        statusCode = 429;
+        break;
+      case "INSUFFICIENT_BALANCE":
+      case "ORDER_EXECUTION_FAILED":
+      case "RISK_LIMIT_EXCEEDED":
+      case "HEDGE_TASK_ENQUEUE_FAILED":
+        statusCode = 400;
+        break;
+      case "SERVICE_UNAVAILABLE":
+        statusCode = 503;
+        break;
+    }
   }
 
   await reply.status(statusCode).send({

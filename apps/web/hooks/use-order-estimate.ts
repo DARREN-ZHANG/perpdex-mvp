@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useMarket } from './use-market'
+import { useBinancePrice } from './use-binance-price'
 
 interface OrderEstimateParams {
   margin: number
@@ -19,10 +19,10 @@ export function useOrderEstimate({
   leverage,
   side,
 }: OrderEstimateParams): OrderEstimate {
-  const { marketData } = useMarket('BTC')
+  const { data: priceData } = useBinancePrice('BTCUSDT')
 
   return useMemo(() => {
-    if (!marketData || !margin || !leverage) {
+    if (!priceData || !margin || !leverage) {
       return {
         positionSize: 0,
         entryPrice: 0,
@@ -32,7 +32,7 @@ export function useOrderEstimate({
     }
 
     const positionSize = margin * leverage
-    const entryPrice = parseFloat(marketData.markPrice)
+    const entryPrice = priceData.price
 
     // Simplified liquidation price: entryPrice * (1 ± 1/leverage * 0.9)
     const liquidationPrice =
@@ -50,5 +50,5 @@ export function useOrderEstimate({
       liquidationPrice,
       fee,
     }
-  }, [margin, leverage, side, marketData])
+  }, [margin, leverage, side, priceData])
 }

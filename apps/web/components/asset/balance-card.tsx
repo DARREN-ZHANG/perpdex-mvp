@@ -1,7 +1,25 @@
 'use client'
 
+import { formatUnits } from 'viem'
 import { useBalance } from '@/hooks/use-balance'
-import { usePositions } from '@/hooks/use-positions'
+import { useBinancePrice } from '@/hooks/use-binance-price'
+import {
+  calculatePositionUnrealizedPnl,
+  parseUsdcBaseUnits,
+  usePositions,
+} from '@/hooks/use-positions'
+
+const USDC_DECIMALS = 6
+
+// 将原始值转换为可读的 USDC 金额
+function formatBalance(value: string | undefined): number {
+  if (!value) return 0
+  return parseFloat(formatUnits(BigInt(value), USDC_DECIMALS))
+}
+
+function clampNonNegative(value: number): number {
+  return value > 0 ? value : 0
+}
 
 interface SummaryCardProps {
   label: string
@@ -34,16 +52,22 @@ function SummaryCard({ label, value, prefix = '$', variant = 'default' }: Summar
 export function BalanceSummary() {
   const { balance } = useBalance()
   const { positions } = usePositions()
+  const { data: priceData } = useBinancePrice('BTCUSDT')
 
-  // 解析余额数据（字符串转为数字）
-  const equity = parseFloat(balance?.equity || '0')
-  const availableBalance = parseFloat(balance?.availableBalance || '0')
-  const lockedBalance = parseFloat(balance?.lockedBalance || '0')
-  const totalValue = equity + availableBalance
+  // 解析余额数据（从原始值转换为 USDC）
+  const availableBalance = formatBalance(balance?.availableBalance)
+  const lockedBalanceFromPositions = positions.reduce((sum, pos) => {
+    return sum + parseUsdcBaseUnits(pos.margin)
+  }, 0)
+  const lockedBalance = clampNonNegative(
+    positions.length > 0 ? lockedBalanceFromPositions : formatBalance(balance?.lockedBalance)
+  )
+  const totalValue = availableBalance + lockedBalance
 
   // 计算未实现盈亏
-  const unrealizedPnl =
-    positions?.reduce((sum, pos) => sum + parseFloat(pos.unrealizedPnl || '0'), 0) || 0
+  const unrealizedPnl = positions.reduce((sum, pos) => {
+    return sum + calculatePositionUnrealizedPnl(pos, priceData?.price)
+  }, 0)
 
   return (
     <div className="grid grid-cols-4 gap-4">

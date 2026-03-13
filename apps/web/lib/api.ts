@@ -8,10 +8,13 @@ import type {
   User,
   RequestConfig,
   AccountBalance,
+  OrderHistoryItem,
   Transaction,
   WithdrawPayload,
   PaginatedResponse,
 } from '@/types/api'
+
+const AUTH_TOKEN_CHANGE_EVENT = 'perpdex:auth-token-change'
 
 class ApiClient {
   private baseUrl: string
@@ -34,6 +37,7 @@ class ApiClient {
   setAccessToken(token: string): void {
     if (typeof window === 'undefined') return
     localStorage.setItem('accessToken', token)
+    window.dispatchEvent(new CustomEvent(AUTH_TOKEN_CHANGE_EVENT))
   }
 
   // 清除 token
@@ -41,6 +45,7 @@ class ApiClient {
     if (typeof window === 'undefined') return
     localStorage.removeItem('accessToken')
     localStorage.removeItem('refreshToken')
+    window.dispatchEvent(new CustomEvent(AUTH_TOKEN_CHANGE_EVENT))
   }
 
   // 带超时的 fetch
@@ -84,10 +89,11 @@ class ApiClient {
 
     const url = `${this.baseUrl}${endpoint}`
     const token = this.getAccessToken()
+    const hasJsonBody = typeof fetchOptions.body === 'string' && fetchOptions.body.length > 0
 
     const defaultHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(hasJsonBody ? { 'Content-Type': 'application/json' } : {}),
     }
 
     // 合并自定义 headers
@@ -139,9 +145,15 @@ class ApiClient {
         }
 
         // 确保成功响应包含 success 字段
-        return {
-          success: true,
+        const responseData = {
           ...data,
+          success: undefined,
+        }
+        delete responseData.success
+
+        return {
+          ...responseData,
+          success: true,
         }
       } catch (error) {
         lastError = error as Error
@@ -275,6 +287,25 @@ class ApiClient {
     )
   }
 
+  // 获取单条交易状态
+  async getTransaction(transactionId: string): Promise<ApiResponse<Transaction>> {
+    return this.get<Transaction>(`/api/user/transactions/${transactionId}`)
+  }
+
+  // 获取订单历史
+  async getOrders(
+    query?: { cursor?: string; limit?: number }
+  ): Promise<ApiResponse<PaginatedResponse<OrderHistoryItem>>> {
+    const params = new URLSearchParams()
+    if (query?.cursor) params.append('cursor', query.cursor)
+    if (query?.limit) params.append('limit', query.limit.toString())
+
+    const queryString = params.toString()
+    return this.get<PaginatedResponse<OrderHistoryItem>>(
+      `/api/user/orders${queryString ? `?${queryString}` : ''}`
+    )
+  }
+
   // 发起提现
   async withdraw(amount: string): Promise<ApiResponse<WithdrawPayload>> {
     return this.post<WithdrawPayload>('/api/user/withdraw', { amount })
@@ -283,6 +314,7 @@ class ApiClient {
 
 // 导出单例实例
 export const api = new ApiClient()
+export { AUTH_TOKEN_CHANGE_EVENT }
 
 // 导出类型
-export type { ApiResponse, ApiError, AuthChallenge, AuthTokens, User, AccountBalance, Transaction, WithdrawPayload, PaginatedResponse }
+export type { ApiResponse, ApiError, AuthChallenge, AuthTokens, User, AccountBalance, OrderHistoryItem, Transaction, WithdrawPayload, PaginatedResponse }

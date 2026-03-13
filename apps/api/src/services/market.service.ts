@@ -1,33 +1,70 @@
 // apps/api/src/services/market.service.ts
 /**
  * 市场服务
- * 获取实时价格数据
+ * 获取实时价格数据（从 Hyperliquid API）
  */
 import Decimal from "decimal.js";
 import { logger } from "../utils/logger";
+import { hyperliquidClient } from "../clients/hyperliquid";
 
-// MVP: Mock 价格服务，后续接入 Hyperliquid
 export class MarketService {
-  private prices: Map<string, Decimal> = new Map();
+  private async getBinanceFallbackPrice(symbol: string): Promise<Decimal> {
+    const binanceSymbol = `${symbol.toUpperCase()}USDT`;
+    const response = await fetch(
+      `https://api.binance.com/api/v3/ticker/price?symbol=${encodeURIComponent(binanceSymbol)}`
+    );
 
-  constructor() {
-    // 初始化 mock 价格
-    this.prices.set("BTC", new Decimal("50000"));
+    if (!response.ok) {
+      throw new Error(`Binance price request failed with status ${response.status}`);
+    }
+
+    const payload = await response.json() as { price?: string };
+
+    if (!payload.price) {
+      throw new Error("Binance price response is missing price");
+    }
+
+    return new Decimal(payload.price);
   }
 
   async getMarkPrice(symbol: string): Promise<Decimal> {
-    // TODO: 从 Hyperliquid API 获取实时价格
-    const price = this.prices.get(symbol);
-    if (!price) {
-      throw new Error(`Unknown symbol: ${symbol}`);
-    }
-    return price;
-  }
+    try {
+      const priceStr = await hyperliquidClient.getMarkPrice(symbol);
+      const price = new Decimal(priceStr);
 
-  // 供测试使用
-  setMarkPrice(symbol: string, price: Decimal): void {
-    this.prices.set(symbol, price);
-    logger.info({ msg: "Mark price updated", symbol, price: price.toString() });
+      logger.debug({
+        msg: "Fetched mark price from Hyperliquid",
+        symbol,
+        price: price.toString()
+      });
+
+      return price;
+    } catch (error) {
+      logger.warn({
+        msg: "Failed to fetch mark price from Hyperliquid, falling back to Binance",
+        symbol,
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+
+    try {
+      const price = await this.getBinanceFallbackPrice(symbol);
+
+      logger.warn({
+        msg: "Fetched mark price from Binance fallback",
+        symbol,
+        price: price.toString()
+      });
+
+      return price;
+    } catch (fallbackError) {
+      logger.error({
+        msg: "Failed to fetch mark price from all providers",
+        symbol,
+        error: fallbackError instanceof Error ? fallbackError.message : "Unknown error"
+      });
+      throw new Error(`Failed to fetch mark price for ${symbol}`);
+    }
   }
 }
 

@@ -306,6 +306,36 @@ class PrismaTransactionDelegate {
 
 // 对冲订单 Delegate Mock
 class PrismaHedgeOrderDelegate {
+  findUnique = vi.fn(async (args: { where: { taskId: string } }) => {
+    return mockData.hedgeOrders.get(args.where.taskId) || null;
+  });
+
+  findMany = vi.fn(async (args?: {
+    where?: { userId?: string; status?: string; priority?: number };
+    orderBy?: { createdAt: "desc" | "asc" };
+    take?: number;
+  }) => {
+    let result = Array.from(mockData.hedgeOrders.values());
+
+    if (args?.where?.userId) {
+      result = result.filter((item) => item.userId === args.where!.userId);
+    }
+    if (args?.where?.status) {
+      result = result.filter((item) => item.status === args.where!.status);
+    }
+    if (args?.where?.priority !== undefined) {
+      result = result.filter((item) => item.priority === args.where!.priority);
+    }
+    if (args?.orderBy?.createdAt === "desc") {
+      result = result.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    }
+    if (args?.take !== undefined) {
+      result = result.slice(0, args.take);
+    }
+
+    return result;
+  });
+
   create = vi.fn(async (args: { data: Partial<HedgeOrder> }) => {
     const hedgeOrder: HedgeOrder = {
       id: args.data.id || `hedge_${Date.now()}`,
@@ -333,6 +363,17 @@ class PrismaHedgeOrderDelegate {
     };
     mockData.hedgeOrders.set(hedgeOrder.taskId, hedgeOrder);
     return hedgeOrder;
+  });
+
+  update = vi.fn(async (args: { where: { taskId: string }; data: Partial<HedgeOrder> }) => {
+    const hedgeOrder = mockData.hedgeOrders.get(args.where.taskId);
+    if (!hedgeOrder) {
+      throw new Error(`Hedge order not found: ${args.where.taskId}`);
+    }
+
+    const updated = { ...hedgeOrder, ...args.data, updatedAt: new Date() };
+    mockData.hedgeOrders.set(args.where.taskId, updated as HedgeOrder);
+    return updated as HedgeOrder;
   });
 }
 
@@ -596,6 +637,34 @@ export const mockPrismaClient = {
 
   // 对冲订单操作
   hedgeOrder: {
+    findUnique: vi.fn(async (args: { where: { taskId: string } }) => {
+      return mockData.hedgeOrders.get(args.where.taskId) || null;
+    }),
+    findMany: vi.fn(async (args?: {
+      where?: { userId?: string; status?: string; priority?: number };
+      orderBy?: { createdAt: "desc" | "asc" };
+      take?: number;
+    }) => {
+      let result = Array.from(mockData.hedgeOrders.values());
+
+      if (args?.where?.userId) {
+        result = result.filter((item) => item.userId === args.where!.userId);
+      }
+      if (args?.where?.status) {
+        result = result.filter((item) => item.status === args.where!.status);
+      }
+      if (args?.where?.priority !== undefined) {
+        result = result.filter((item) => item.priority === args.where!.priority);
+      }
+      if (args?.orderBy?.createdAt === "desc") {
+        result = result.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+      }
+      if (args?.take !== undefined) {
+        result = result.slice(0, args.take);
+      }
+
+      return result;
+    }),
     create: vi.fn(async (args: { data: Partial<HedgeOrder> }) => {
       const hedgeOrder: HedgeOrder = {
         id: args.data.id || `hedge_${Date.now()}`,
@@ -623,6 +692,16 @@ export const mockPrismaClient = {
       };
       mockData.hedgeOrders.set(hedgeOrder.taskId, hedgeOrder);
       return hedgeOrder;
+    }),
+    update: vi.fn(async (args: { where: { taskId: string }; data: Partial<HedgeOrder> }) => {
+      const hedgeOrder = mockData.hedgeOrders.get(args.where.taskId);
+      if (!hedgeOrder) {
+        throw new Error(`Hedge order not found: ${args.where.taskId}`);
+      }
+
+      const updated = { ...hedgeOrder, ...args.data, updatedAt: new Date() };
+      mockData.hedgeOrders.set(args.where.taskId, updated as HedgeOrder);
+      return updated as HedgeOrder;
     })
   }
 };

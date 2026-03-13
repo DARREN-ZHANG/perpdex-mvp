@@ -188,8 +188,13 @@ export function shouldLiquidate(
   position: PositionInput,
   market: MarkPriceInput
 ): boolean {
-  const risk = calculateRiskLevel(position, market);
-  return risk.riskLevel === "DANGER" && risk.marginRatio.lte(0);
+  const { liquidationPrice } = calculateLiquidationPrice(position);
+
+  if (position.side === "LONG") {
+    return market.markPrice.lte(liquidationPrice);
+  }
+
+  return market.markPrice.gte(liquidationPrice);
 }
 
 export default {

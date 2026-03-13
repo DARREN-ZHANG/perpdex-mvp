@@ -1,51 +1,94 @@
 'use client'
 
-import { useState } from 'react'
-import { useTransactions } from '@/hooks/use-transactions'
+import { useState, type UIEvent } from 'react'
+import { formatUnits } from 'viem'
 import { Loader2 } from 'lucide-react'
+import { useOrderHistory } from '@/hooks/use-order-history'
+import { useTransactions } from '@/hooks/use-transactions'
+import { useAuth } from '@/hooks/use-auth'
+import type { OrderHistoryItem } from '@/types/api'
 
-const TABS = ['最近交易', '委托订单', '资金流水']
+const USDC_DECIMALS = 6
+const TABS = ['订单记录', '资金流水'] as const
+const STATUS_BADGE_CLASS = 'inline-flex h-5 w-fit self-center items-center rounded-full px-2 text-xs leading-none'
+
+function formatUSDC(value: string | undefined): string {
+  if (!value) return '0'
+  return formatUnits(BigInt(value), USDC_DECIMALS)
+}
+
+function formatTime(value: string): string {
+  return new Date(value).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+}
+
+function getOrderLabel(order: OrderHistoryItem): string {
+  if (order.action === 'CLOSE') {
+    return order.side === 'LONG' ? `平空 ${order.symbol}` : `平多 ${order.symbol}`
+  }
+
+  return order.side === 'LONG' ? `开多 ${order.symbol}` : `开空 ${order.symbol}`
+}
 
 export function RecentTrades() {
-  const [activeTab, setActiveTab] = useState(0)
-  const { transactions, isLoading } = useTransactions({ limit: 5 })
+  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>('订单记录')
+  const { isAuthenticated } = useAuth()
+  const {
+    orders,
+    isLoading: isOrdersLoading,
+    fetchNextPage: fetchNextOrdersPage,
+    hasNextPage: hasNextOrdersPage,
+    isFetchingNextPage: isFetchingNextOrdersPage,
+  } = useOrderHistory({ limit: 20 })
+  const {
+    transactions,
+    isLoading: isTransactionsLoading,
+    fetchNextPage: fetchNextTransactionsPage,
+    hasNextPage: hasNextTransactionsPage,
+    isFetchingNextPage: isFetchingNextTransactionsPage,
+  } = useTransactions({ limit: 20 })
 
-  const getTypeClass = (type: string) => {
+  const fundTransactions = transactions.filter(
+    (tx) => tx.type === 'DEPOSIT' || tx.type === 'WITHDRAW'
+  )
+
+  const isOrderTab = activeTab === '订单记录'
+  const isLoading = isAuthenticated && (isOrderTab ? isOrdersLoading : isTransactionsLoading)
+  const isFetchingMore = isOrderTab ? isFetchingNextOrdersPage : isFetchingNextTransactionsPage
+  const hasNextPage = isOrderTab ? hasNextOrdersPage : hasNextTransactionsPage
+
+  const handleScroll = async (event: UIEvent<HTMLDivElement>) => {
+    const element = event.currentTarget
+    const distanceToBottom =
+      element.scrollHeight - element.scrollTop - element.clientHeight
+
+    if (!isAuthenticated || distanceToBottom > 48 || isFetchingMore || !hasNextPage) {
+      return
+    }
+
+    if (isOrderTab) {
+      await fetchNextOrdersPage()
+      return
+    }
+
+    await fetchNextTransactionsPage()
+  }
+
+  const getFundTypeClass = (type: string) => {
     switch (type) {
       case 'DEPOSIT':
         return 'text-pro-accent-green'
       case 'WITHDRAW':
         return 'text-pro-accent-red'
-      case 'MARGIN_LOCK':
-      case 'MARGIN_RELEASE':
-        return 'text-pro-accent-cyan'
       default:
         return 'text-pro-gray-500'
     }
   }
 
-  const getTypeLabel = (type: string) => {
-    switch (type) {
-      case 'DEPOSIT':
-        return '充值'
-      case 'WITHDRAW':
-        return '提现'
-      case 'MARGIN_LOCK':
-        return '保证金锁定'
-      case 'MARGIN_RELEASE':
-        return '保证金释放'
-      case 'REALIZED_PNL':
-        return '已实现盈亏'
-      case 'FEE':
-        return '手续费'
-      case 'LIQUIDATION':
-        return '清算'
-      default:
-        return type
-    }
-  }
-
-  const getStatusClass = (status: string) => {
+  const getFundStatusClass = (status: string) => {
     switch (status) {
       case 'CONFIRMED':
         return 'bg-pro-accent-green/10 text-pro-accent-green'
@@ -59,16 +102,60 @@ export function RecentTrades() {
     }
   }
 
+  const getFundStatusLabel = (status: string) => {
+    switch (status) {
+      case 'CONFIRMED':
+        return '已确认'
+      case 'PENDING':
+        return '处理中'
+      case 'FAILED':
+      case 'REVERTED':
+        return '失败'
+      default:
+        return status
+    }
+  }
+
+  const getOrderStatusClass = (status: string) => {
+    switch (status) {
+      case 'FILLED':
+        return 'bg-pro-accent-green/10 text-pro-accent-green'
+      case 'PENDING':
+        return 'bg-pro-accent-cyan/10 text-pro-accent-cyan'
+      case 'FAILED':
+      case 'CANCELED':
+        return 'bg-pro-accent-red/10 text-pro-accent-red'
+      default:
+        return 'bg-pro-gray-100 text-pro-gray-500'
+    }
+  }
+
+  const getOrderStatusLabel = (status: string) => {
+    switch (status) {
+      case 'FILLED':
+        return '已成交'
+      case 'PENDING':
+        return '处理中'
+      case 'FAILED':
+        return '失败'
+      case 'CANCELED':
+        return '已取消'
+      default:
+        return status
+    }
+  }
+
+  const isEmpty = !isAuthenticated || (isOrderTab ? orders.length === 0 : fundTransactions.length === 0)
+
   return (
     <div className="h-[280px] flex flex-col">
-      {/* Tabs */}
       <div className="flex px-4 border-b border-pro-gray-100">
-        {TABS.map((tab, index) => (
+        {TABS.map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(index)}
+            onClick={() => setActiveTab(tab)}
             className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === index
+              activeTab === tab
                 ? 'text-pro-accent-cyan border-pro-accent-cyan'
                 : 'text-pro-gray-500 border-transparent hover:text-pro-gray-700'
             }`}
@@ -78,49 +165,96 @@ export function RecentTrades() {
         ))}
       </div>
 
-      {/* Header */}
-      <div className="grid grid-cols-[100px_1fr_1fr_80px] gap-2 px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
-        <span>时间</span>
-        <span>类型</span>
-        <span>数量</span>
-        <span>状态</span>
-      </div>
+      {isOrderTab ? (
+        <div className="grid grid-cols-[96px_92px_1fr_110px_90px] items-center gap-2 px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
+          <span>时间</span>
+          <span>方向</span>
+          <span>数量 / 价格</span>
+          <span>金额</span>
+          <span>状态</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-[100px_1fr_1fr_80px] items-center gap-2 px-4 py-2 text-xs text-pro-gray-500 uppercase tracking-wider border-b border-pro-gray-100">
+          <span>时间</span>
+          <span>类型</span>
+          <span>数量</span>
+          <span>状态</span>
+        </div>
+      )}
 
-      {/* Content */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto" onScroll={handleScroll}>
         {isLoading ? (
           <div className="flex justify-center py-8">
             <Loader2 className="w-5 h-5 animate-spin text-pro-gray-400" />
           </div>
-        ) : !transactions || transactions.length === 0 ? (
-          <div className="text-center py-8 text-sm text-pro-gray-500">
-            暂无记录
-          </div>
+        ) : isEmpty ? (
+          <div className="text-center py-8 text-sm text-pro-gray-500">暂无记录</div>
+        ) : isOrderTab ? (
+          orders.map((order) => (
+            <div
+              key={order.id}
+              className="grid grid-cols-[96px_92px_1fr_110px_90px] items-center gap-2 px-4 py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
+            >
+              <span className="text-pro-gray-500 font-mono text-xs">{formatTime(order.createdAt)}</span>
+              <span className={`font-medium ${order.side === 'LONG' ? 'text-pro-accent-green' : 'text-pro-accent-red'}`}>
+                {getOrderLabel(order)}
+              </span>
+              <div className="min-w-0">
+                <div className="font-mono font-medium truncate">
+                  {Number(order.size).toLocaleString('en-US', {
+                    minimumFractionDigits: 4,
+                    maximumFractionDigits: 4,
+                  })}
+                </div>
+                <div className="text-xs text-pro-gray-500 truncate">
+                  {order.executedPrice
+                    ? `成交价 ${Number(order.executedPrice).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}`
+                    : order.failureMessage || '等待成交'}
+                </div>
+              </div>
+              <span className="font-mono font-medium">
+                {order.action === 'CLOSE'
+                  ? '平仓'
+                  : `${parseFloat(formatUSDC(order.margin)).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                    })} USDC`}
+              </span>
+              <span className={`${STATUS_BADGE_CLASS} ${getOrderStatusClass(order.status)}`}>
+                {getOrderStatusLabel(order.status)}
+              </span>
+            </div>
+          ))
         ) : (
-          transactions.map((tx) => (
+          fundTransactions.map((tx) => (
             <div
               key={tx.id}
-              className="grid grid-cols-[100px_1fr_1fr_80px] gap-2 px-4 py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
+              className="grid grid-cols-[100px_1fr_1fr_80px] items-center gap-2 px-4 py-3 text-sm border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
             >
-              <span className="text-pro-gray-500 font-mono text-xs">
-                {new Date(tx.createdAt).toLocaleTimeString('zh-CN', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                  second: '2-digit',
-                })}
-              </span>
-              <span className={`font-medium ${getTypeClass(tx.type)}`}>
-                {getTypeLabel(tx.type)}
+              <span className="text-pro-gray-500 font-mono text-xs">{formatTime(tx.createdAt)}</span>
+              <span className={`font-medium ${getFundTypeClass(tx.type)}`}>
+                {tx.type === 'DEPOSIT' ? '充值' : '提现'}
               </span>
               <span className="font-mono font-medium">
-                {parseFloat(tx.amount).toLocaleString()} USDC
+                {parseFloat(formatUSDC(tx.amount)).toLocaleString('en-US', {
+                  minimumFractionDigits: 2,
+                })}{' '}
+                USDC
               </span>
-              <span className={`text-xs px-2 py-0.5 rounded-full w-fit ${getStatusClass(tx.status)}`}>
-                {tx.status === 'CONFIRMED' ? '已确认' : tx.status === 'PENDING' ? '处理中' : '失败'}
+              <span className={`${STATUS_BADGE_CLASS} ${getFundStatusClass(tx.status)}`}>
+                {getFundStatusLabel(tx.status)}
               </span>
             </div>
           ))
         )}
+
+        {!isLoading && isFetchingMore ? (
+          <div className="flex justify-center py-3">
+            <Loader2 className="w-4 h-4 animate-spin text-pro-gray-400" />
+          </div>
+        ) : null}
       </div>
     </div>
   )
