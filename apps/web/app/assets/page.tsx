@@ -1,105 +1,209 @@
-// apps/web/app/assets/page.tsx
 'use client'
 
 import { useState } from 'react'
-import { BalanceCard } from '@/components/asset/balance-card'
-import { DepositFlow } from '@/components/asset/deposit-flow'
-import { WithdrawFlow } from '@/components/asset/withdraw-flow'
-import { TransactionHistory } from '@/components/asset/transaction-history'
+import { useBalance } from '@/hooks/use-balance'
+import { BalanceSummary } from '@/components/asset/balance-card'
+import Link from 'next/link'
 import { useAuth } from '@/hooks/use-auth'
 
-export default function AssetsPage() {
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
-  const [isDepositOpen, setIsDepositOpen] = useState(false)
-  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
+const ASSETS = [
+  {
+    symbol: 'USDC',
+    name: 'USD Coin',
+    color: '#2775CA',
+    letter: 'U',
+  },
+  {
+    symbol: 'BTC',
+    name: 'Bitcoin',
+    color: '#F7931A',
+    letter: '₿',
+  },
+  {
+    symbol: 'ETH',
+    name: 'Ethereum',
+    color: '#627EEA',
+    letter: 'Ξ',
+  },
+]
 
+export default function AssetsPage() {
+  const { balance } = useBalance()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const [hideZero, setHideZero] = useState(false)
+
+  const availableBalance = parseFloat(balance?.availableBalance || '0')
+  const lockedBalance = parseFloat(balance?.lockedBalance || '0')
+  const totalBalance = availableBalance + lockedBalance
+
+  const assetData = ASSETS.map((asset) => ({
+    ...asset,
+    total: asset.symbol === 'USDC' ? totalBalance : 0,
+    available: asset.symbol === 'USDC' ? availableBalance : 0,
+    locked: asset.symbol === 'USDC' ? lockedBalance : 0,
+  })).filter((asset) => !hideZero || asset.total > 0)
+
+  // 加载状态
   if (authLoading) {
     return (
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-2xl font-bold text-white mb-6">资产管理</h1>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">
-            <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 animate-pulse">
-              <div className="h-8 bg-gray-800 rounded mb-4" />
-              <div className="h-32 bg-gray-800 rounded" />
-            </div>
-          </div>
-          <div className="lg:col-span-2">
-            <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 animate-pulse">
-              <div className="h-8 bg-gray-800 rounded mb-4" />
-              <div className="h-64 bg-gray-800 rounded" />
-            </div>
-          </div>
+      <div className="p-6 max-w-6xl mx-auto">
+        <div className="mb-6">
+          <div className="h-8 bg-pro-gray-200 rounded w-32 mb-2 animate-pulse" />
+          <div className="h-4 bg-pro-gray-200 rounded w-48 animate-pulse" />
         </div>
+        <div className="grid grid-cols-4 gap-4 mb-6">
+          {[...Array(4)].map((_, i) => (
+            <div key={i} className="bg-white rounded-lg p-5 h-24 animate-pulse" />
+          ))}
+        </div>
+        <div className="bg-white rounded-lg h-64 animate-pulse" />
       </div>
     )
   }
 
+  // 未登录状态
   if (!isAuthenticated) {
     return (
-      <div className="max-w-6xl mx-auto">
-        <h1 className="text-2xl font-bold text-white mb-6">资产管理</h1>
-        <div className="bg-gray-900 rounded-xl p-12 border border-gray-800 text-center">
-          <p className="text-gray-400 mb-4">请先连接钱包并登录以查看资产</p>
-          <p className="text-gray-500 text-sm">点击右上角「连接钱包」按钮开始</p>
+      <div className="p-6 max-w-6xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-pro-gray-800 mb-2">资产概览</h1>
+          <p className="text-sm text-pro-gray-500">查看您的账户余额和资金状况</p>
+        </div>
+
+        <div className="bg-white rounded-lg shadow-panel p-12 text-center">
+          <p className="text-pro-gray-500 mb-4">请先连接钱包并登录以查看资产</p>
+          <p className="text-sm text-pro-gray-400">点击右上角「连接钱包」按钮开始</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
-      <h1 className="text-2xl font-bold text-white mb-6">资产管理</h1>
+    <div className="p-6 max-w-6xl mx-auto">
+      {/* Page Header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-pro-gray-800 mb-2">资产概览</h1>
+        <p className="text-sm text-pro-gray-500">
+          查看您的账户余额和资金状况
+        </p>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* 左侧：余额卡片 */}
-        <div className="lg:col-span-1 space-y-6">
-          <BalanceCard
-            onDeposit={() => setIsDepositOpen(true)}
-            onWithdraw={() => setIsWithdrawOpen(true)}
-          />
+      {/* Summary Cards */}
+      <div className="mb-6">
+        <BalanceSummary />
+      </div>
 
-          {/* 快速链接 */}
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-            <h3 className="text-white font-medium mb-4">快速链接</h3>
-            <div className="space-y-2">
-              <a
-                href="https://sepolia.arbiscan.io"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-gray-400 hover:text-green-400 transition-colors"
-              >
-                <span>Arbiscan 浏览器</span>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-              </a>
-              <a
-                href="https://faucet.quicknode.com/arbitrum/sepolia"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-gray-400 hover:text-green-400 transition-colors"
-              >
-                <span>Arbitrum Sepolia 水龙头</span>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                </svg>
-              </a>
-            </div>
+      {/* Assets Table */}
+      <div className="bg-white rounded-lg shadow-panel overflow-hidden">
+        {/* Table Header */}
+        <div className="px-6 py-4 border-b border-pro-gray-100 flex justify-between items-center">
+          <h2 className="font-semibold text-pro-gray-800">我的资产</h2>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm text-pro-gray-500 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hideZero}
+                onChange={(e) => setHideZero(e.target.checked)}
+                className="rounded border-pro-gray-300"
+              />
+              隐藏零余额
+            </label>
+            <Link
+              href="/deposit"
+              className="px-4 py-2 bg-pro-gray-900 text-white text-sm font-medium rounded-md hover:bg-pro-gray-800 transition-colors"
+            >
+              充值
+            </Link>
           </div>
         </div>
 
-        {/* 右侧：交易历史 */}
-        <div className="lg:col-span-2">
-          <TransactionHistory />
+        {/* Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-pro-gray-50 text-xs text-pro-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left font-semibold">资产</th>
+                <th className="px-6 py-3 text-right font-semibold">总余额</th>
+                <th className="px-6 py-3 text-right font-semibold">可用余额</th>
+                <th className="px-6 py-3 text-right font-semibold">已锁定</th>
+                <th className="px-6 py-3 text-right font-semibold">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {assetData.map((asset) => (
+                <tr
+                  key={asset.symbol}
+                  className="border-b border-pro-gray-50 hover:bg-pro-gray-50 transition-colors"
+                >
+                  <td className="px-6 py-5">
+                    <div className="flex items-center gap-4">
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
+                        style={{ backgroundColor: asset.color }}
+                      >
+                        {asset.letter}
+                      </div>
+                      <div>
+                        <div className="font-semibold text-pro-gray-800">
+                          {asset.symbol}
+                        </div>
+                        <div className="text-sm text-pro-gray-500">
+                          {asset.name}
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5 text-right">
+                    <div className="font-semibold font-mono text-pro-gray-800">
+                      {asset.total.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                      })}
+                    </div>
+                    <div className="text-sm text-pro-gray-500">
+                      ≈ ${asset.total.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                      })}
+                    </div>
+                  </td>
+                  <td className="px-6 py-5 text-right">
+                    <div className="font-semibold font-mono text-pro-gray-800">
+                      {asset.available.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                      })}
+                    </div>
+                    <div className="text-sm text-pro-gray-500">
+                      ≈ ${asset.available.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                      })}
+                    </div>
+                  </td>
+                  <td className="px-6 py-5 text-right">
+                    {asset.locked > 0 ? (
+                      <div className="font-semibold font-mono text-pro-gray-800">
+                        {asset.locked.toLocaleString('en-US', {
+                          minimumFractionDigits: 2,
+                        })}
+                      </div>
+                    ) : (
+                      <span className="text-pro-gray-400">—</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-5 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button className="px-3 py-1.5 bg-pro-accent-green text-white text-xs font-medium rounded hover:bg-pro-accent-green/90 transition-colors">
+                        充值
+                      </button>
+                      <button className="px-3 py-1.5 border border-pro-gray-200 text-pro-gray-600 text-xs font-medium rounded hover:border-pro-gray-300 transition-colors">
+                        提现
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
-
-      {/* 充值弹窗 */}
-      <DepositFlow isOpen={isDepositOpen} onClose={() => setIsDepositOpen(false)} />
-
-      {/* 提现弹窗 */}
-      <WithdrawFlow isOpen={isWithdrawOpen} onClose={() => setIsWithdrawOpen(false)} />
     </div>
   )
 }

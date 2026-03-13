@@ -18,7 +18,20 @@ import { logger } from "./utils/logger";
 
 export async function buildServer() {
   const app = Fastify({
-    logger: logger,
+    logger: {
+      level: config.server.logLevel,
+      transport:
+        config.server.nodeEnv === "development"
+          ? {
+              target: "pino-pretty",
+              options: {
+                colorize: true,
+                translateTime: "HH:MM:ss Z",
+                ignore: "pid,hostname"
+              }
+            }
+          : undefined
+    },
     requestIdHeader: "x-request-id",
     requestIdLogLabel: "requestId"
   });

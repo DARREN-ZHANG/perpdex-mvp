@@ -1,8 +1,6 @@
-// apps/web/app/layout.tsx
 import type { ReactNode } from "react";
 import { Web3Provider } from "@/config/wagmi";
 import { Header } from "@/components/layout/header";
-import { Sidebar } from "@/components/layout/sidebar";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -14,15 +12,12 @@ export const metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body className="bg-gray-950 text-white min-h-screen">
+      <body className="bg-pro-gray-50 text-pro-gray-800 min-h-screen">
         <Providers>
           <Web3Provider>
             <Header />
-            <Sidebar />
-            <main className="pt-16 pl-64 min-h-screen">
-              <div className="p-6">
-                {children}
-              </div>
+            <main className="min-h-[calc(100vh-64px)]">
+              {children}
             </main>
           </Web3Provider>
         </Providers>

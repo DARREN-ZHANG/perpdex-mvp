@@ -1,189 +1,112 @@
-// apps/web/components/trading/price-chart.tsx
 'use client'
 
-import { useEffect, useRef } from 'react'
-import {
-  createChart,
-  CandlestickSeries,
-  type ISeriesApi,
-  type CandlestickData,
-  type Time,
-} from 'lightweight-charts'
-import type { CandleData, Timeframe } from '@/types/trading'
+import { useEffect, useRef, useState } from 'react'
+import { useMarket } from '@/hooks/use-market'
 
-interface PriceChartProps {
-  data: CandleData[]
-  currentPrice: number
-  symbol: string
-  timeframe: Timeframe
-  onTimeframeChange: (timeframe: Timeframe) => void
-  isLoading?: boolean
-}
-
-const TIMEFRAMES: { label: string; value: Timeframe }[] = [
-  { label: '1m', value: '1m' },
-  { label: '5m', value: '5m' },
-  { label: '15m', value: '15m' },
-  { label: '1H', value: '1h' },
-  { label: '4H', value: '4h' },
-  { label: '1D', value: '1d' },
+const TIMEFRAMES = [
+  { label: '15m', value: '15' },
+  { label: '1H', value: '60' },
+  { label: '4H', value: '240' },
+  { label: '1D', value: 'D' },
 ]
 
-export function PriceChart({
-  data,
-  currentPrice,
-  symbol,
-  timeframe,
-  onTimeframeChange,
-  isLoading = false,
-}: PriceChartProps) {
-  const chartContainerRef = useRef<HTMLDivElement>(null)
-  const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+export function PriceChart() {
+  const chartRef = useRef<HTMLDivElement>(null)
+  const [timeframe, setTimeframe] = useState('15')
+  const { marketData } = useMarket('BTC')
 
-  // 初始化图表
   useEffect(() => {
-    if (!chartContainerRef.current) return
+    if (!chartRef.current) return
 
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { color: '#0a0a0a' },
-        textColor: '#d1d5db',
-      },
-      grid: {
-        vertLines: { color: '#1f2937' },
-        horzLines: { color: '#1f2937' },
-      },
-      crosshair: {
-        mode: 1,
-        vertLine: {
-          color: '#6b7280',
-          labelBackgroundColor: '#6b7280',
-        },
-        horzLine: {
-          color: '#6b7280',
-          labelBackgroundColor: '#6b7280',
-        },
-      },
-      rightPriceScale: {
-        borderColor: '#1f2937',
-      },
-      timeScale: {
-        borderColor: '#1f2937',
-        timeVisible: true,
-        secondsVisible: false,
-      },
-      width: chartContainerRef.current.clientWidth,
-      height: 400,
-    })
+    chartRef.current.innerHTML = ''
 
-    const candlestickSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#22c55e',
-      downColor: '#ef4444',
-      borderUpColor: '#22c55e',
-      borderDownColor: '#ef4444',
-      wickUpColor: '#22c55e',
-      wickDownColor: '#ef4444',
-    })
+    const container = document.createElement('div')
+    container.id = 'tradingview-chart'
+    container.style.height = '100%'
+    container.style.width = '100%'
+    chartRef.current.appendChild(container)
 
-    candlestickSeriesRef.current = candlestickSeries
-
-    // 响应式处理
-    const handleResize = () => {
-      if (chartContainerRef.current) {
-        chart.applyOptions({
-          width: chartContainerRef.current.clientWidth,
+    const script = document.createElement('script')
+    script.src = 'https://s3.tradingview.com/tv.js'
+    script.async = true
+    script.onload = () => {
+      const win = window as unknown as { TradingView?: { widget: new (config: unknown) => unknown } }
+      if (typeof window !== 'undefined' && win.TradingView) {
+        new win.TradingView.widget({
+          autosize: true,
+          symbol: 'BINANCE:BTCUSDT',
+          interval: timeframe,
+          timezone: 'Etc/UTC',
+          theme: 'light',
+          style: '1',
+          locale: 'zh_CN',
+          toolbar_bg: '#f8f9fa',
+          enable_publishing: false,
+          allow_symbol_change: false,
+          container_id: 'tradingview-chart',
+          hide_top_toolbar: true,
+          hide_legend: true,
+          save_image: false,
+          backgroundColor: '#F8F9FA',
+          gridColor: '#E2E8F0',
         })
       }
     }
-
-    window.addEventListener('resize', handleResize)
+    document.head.appendChild(script)
 
     return () => {
-      window.removeEventListener('resize', handleResize)
-      chart.remove()
+      if (chartRef.current) {
+        chartRef.current.innerHTML = ''
+      }
     }
-  }, [])
+  }, [timeframe])
 
-  // 更新数据
-  useEffect(() => {
-    if (!candlestickSeriesRef.current || data.length === 0) return
-
-    const chartData: CandlestickData<Time>[] = data.map((candle) => ({
-      time: candle.time as Time,
-      open: candle.open,
-      high: candle.high,
-      low: candle.low,
-      close: candle.close,
-    }))
-
-    candlestickSeriesRef.current.setData(chartData)
-  }, [data])
-
-  // 实时更新最新价格
-  useEffect(() => {
-    if (!candlestickSeriesRef.current || data.length === 0 || currentPrice <= 0)
-      return
-
-    const lastCandle = data[data.length - 1]
-    if (!lastCandle) return
-
-    const updatedCandle: CandlestickData<Time> = {
-      time: lastCandle.time as Time,
-      open: lastCandle.open,
-      high: Math.max(lastCandle.high, currentPrice),
-      low: Math.min(lastCandle.low, currentPrice),
-      close: currentPrice,
-    }
-
-    candlestickSeriesRef.current.update(updatedCandle)
-  }, [currentPrice, data])
+  const change24h = marketData?.change24h ? parseFloat(marketData.change24h) : 0
+  const isPositive = change24h >= 0
+  const markPrice = marketData?.markPrice ? parseFloat(marketData.markPrice) : 0
 
   return (
-    <div className="w-full bg-gray-900 rounded-lg overflow-hidden">
-      {/* 头部工具栏 */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
-        <div className="flex items-center gap-4">
-          <h3 className="text-lg font-semibold text-white">{symbol}/USD</h3>
-          <span
-            className={`text-sm font-medium ${
-              currentPrice >= (data[data.length - 1]?.open || 0)
-                ? 'text-green-500'
-                : 'text-red-500'
+    <div className="flex flex-col h-full">
+      {/* Toolbar */}
+      <div className="flex items-center gap-4 px-4 py-2 border-b border-pro-gray-100">
+        {TIMEFRAMES.map((tf) => (
+          <button
+            key={tf.value}
+            onClick={() => setTimeframe(tf.value)}
+            className={`text-sm transition-colors ${
+              timeframe === tf.value
+                ? 'text-pro-accent-cyan font-medium'
+                : 'text-pro-gray-500 hover:text-pro-gray-700'
             }`}
           >
-            ${currentPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-          </span>
-        </div>
-
-        {/* 时间周期选择 */}
-        <div className="flex items-center gap-1">
-          {TIMEFRAMES.map((tf) => (
-            <button
-              key={tf.value}
-              onClick={() => onTimeframeChange(tf.value)}
-              className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
-                timeframe === tf.value
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-400 hover:text-white hover:bg-gray-800'
-              }`}
-            >
-              {tf.label}
-            </button>
-          ))}
-        </div>
+            {tf.label}
+          </button>
+        ))}
+        <span className="ml-auto text-pro-accent-cyan font-medium text-sm">
+          BTC/USD
+        </span>
       </div>
 
-      {/* 图表容器 */}
-      <div className="relative">
-        {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
-            <div className="flex items-center gap-2 text-gray-400">
-              <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-              <span>加载中...</span>
+      {/* Chart Area */}
+      <div className="flex-1 relative">
+        {marketData && markPrice > 0 && (
+          <div className="absolute top-4 left-4 z-10 bg-white/95 rounded-lg shadow-float p-3">
+            <div className="text-sm text-pro-gray-500 mb-1">BTC / USD</div>
+            <div className="text-2xl font-bold font-mono text-pro-gray-800">
+              {markPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+            </div>
+            <div
+              className={`text-sm font-medium mt-1 ${
+                isPositive ? 'text-pro-accent-green' : 'text-pro-accent-red'
+              }`}
+            >
+              {isPositive ? '+' : ''}
+              {change24h.toFixed(2)}%
             </div>
           </div>
         )}
-        <div ref={chartContainerRef} className="w-full" />
+
+        <div ref={chartRef} className="w-full h-full" />
       </div>
     </div>
   )

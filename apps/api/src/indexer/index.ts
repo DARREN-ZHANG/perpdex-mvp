@@ -38,7 +38,7 @@ export function startIndexer(): VaultIndexer {
   return indexer;
 }
 
-// 如果直接运行此文件
-if (require.main === module) {
+// 如果直接运行此文件 (ESM 方式检测)
+if (import.meta.url === `file://${process.argv[1]}`) {
   startIndexer();
 }
