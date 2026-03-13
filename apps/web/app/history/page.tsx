@@ -228,7 +228,8 @@ export default function HistoryPage() {
 
       {/* History Table */}
       <div className="bg-white rounded-lg shadow-panel overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Desktop: Table View */}
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full min-w-[800px]">
             <thead>
               <tr className="bg-pro-gray-50 text-xs text-pro-gray-500 uppercase tracking-wider">
@@ -325,6 +326,63 @@ export default function HistoryPage() {
               )}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile: Card View */}
+        <div className="lg:hidden space-y-3 p-3">
+          {isLoading ? (
+            <div className="text-center py-8 text-pro-gray-400">加载中...</div>
+          ) : error ? (
+            <div className="text-center py-8 text-pro-accent-red">加载失败，请稍后重试</div>
+          ) : !filteredTransactions || filteredTransactions.length === 0 ? (
+            <div className="text-center py-8 text-pro-gray-400">暂无记录</div>
+          ) : (
+            filteredTransactions.map((tx: Transaction) => (
+              <div
+                key={tx.id}
+                className="bg-white rounded-lg shadow-panel p-4"
+              >
+                {/* 头部：类型和状态 */}
+                <div className="flex items-center justify-between mb-3">
+                  <span className={`text-xs px-2.5 py-1 rounded font-medium ${getTypeClass(tx.type)}`}>
+                    {getTypeLabel(tx.type)}
+                  </span>
+                  <span className={`text-xs px-2.5 py-1 rounded-full ${getStatusClass(tx.status)}`}>
+                    {getStatusLabel(tx.status)}
+                  </span>
+                </div>
+
+                {/* 时间和金额 */}
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <div className="text-sm text-pro-gray-800">
+                      {new Date(tx.createdAt).toLocaleDateString('zh-CN')}
+                    </div>
+                    <div className="text-xs text-pro-gray-500 font-mono">
+                      {new Date(tx.createdAt).toLocaleTimeString('zh-CN')}
+                    </div>
+                  </div>
+                  <div className="font-mono font-medium text-lg">
+                    {formatUSDC(tx.amount)}
+                  </div>
+                </div>
+
+                {/* 交易哈希 */}
+                {tx.txHash && (
+                  <div className="pt-2 border-t border-pro-gray-100">
+                    <a
+                      href={`https://arbiscan.io/tx/${tx.txHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs font-mono text-pro-accent-cyan hover:underline"
+                    >
+                      {tx.txHash.slice(0, 10)}...{tx.txHash.slice(-8)}
+                    </a>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
         </div>
 
         {/* Load More */}
