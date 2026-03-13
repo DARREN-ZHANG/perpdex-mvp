@@ -214,6 +214,7 @@ describe("TradeEngine", () => {
         expect(order.userId).toBe(mockUser.id);
         expect(order.symbol).toBe("BTC");
         expect(order.side).toBe("LONG");
+        expect(order.metadata).toEqual({ action: "OPEN" });
         expect(order.status).toBe("FILLED");
         expect(order.size.toString()).toBe("0.1");
         expect(order.margin).toBe(defaultOrderInput.margin);
@@ -590,6 +591,10 @@ describe("TradeEngine", () => {
         expect(closeOrder.userId).toBe(mockUser.id);
         expect(closeOrder.positionId).toBe(testPosition.id);
         expect(closeOrder.side).toBe("SHORT"); // Long 仓位平仓是 Short 订单
+        expect(closeOrder.metadata).toEqual({
+          action: "CLOSE",
+          closingPositionSide: "LONG"
+        });
         expect(closeOrder.type).toBe("MARKET");
         expect(closeOrder.status).toBe("FILLED");
         expect(closeOrder.margin).toBe(BigInt(0)); // 平仓不需要保证金

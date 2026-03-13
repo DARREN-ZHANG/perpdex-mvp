@@ -145,14 +145,17 @@ export async function processHedgeJob(
       });
     }
 
-    // 4. 执行反向订单
-    // 对冲方向：用户做多(LONG) -> 平台做空(sell)，用户做空(SHORT) -> 平台做多(buy)
-    const hedgeSide = data.side === "LONG" ? "sell" : "buy";
+    // 4. 执行对冲订单
+    // data.side 表示要在 HyperLiquid 上持有/关闭的方向:
+    // LONG -> buy, SHORT -> sell
+    const hedgeSide = data.side === "LONG" ? "buy" : "sell";
+    const reduceOnly = hedgeOrder.trigger === "CLOSE";
 
     const result = await hyperliquidClient.submitMarketOrder(
       data.symbol,
       hedgeSide,
-      data.size
+      data.size,
+      reduceOnly
     );
 
     // 5. 更新订单状态

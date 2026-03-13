@@ -91,7 +91,8 @@ export class HyperliquidClient {
   async submitMarketOrder(
     coin: string,
     side: "buy" | "sell",
-    size: string
+    size: string,
+    reduceOnly = false
   ): Promise<OrderResult> {
     // 如果客户端未初始化，返回 mock 响应
     if (!this.walletClient || !this.publicClient) {
@@ -99,7 +100,8 @@ export class HyperliquidClient {
         msg: "Hyperliquid client not initialized, returning mock response",
         coin,
         side,
-        size
+        size,
+        reduceOnly
       });
       return {
         orderId: `mock-${Date.now()}`,
@@ -113,6 +115,7 @@ export class HyperliquidClient {
         coin,
         side,
         size,
+        reduceOnly,
         address: this.walletAddress
       });
 
@@ -152,7 +155,7 @@ export class HyperliquidClient {
           b: side === "buy",       // 是否买入
           p: limitPrice,           // 限价
           s: size,                 // 数量
-          r: false,                // 不是 reduce-only
+          r: reduceOnly,           // 平仓对冲时使用 reduce-only
           t: {
             limit: {
               tif: "Ioc"           // Immediate or Cancel (市价单)
@@ -185,6 +188,7 @@ export class HyperliquidClient {
           coin,
           side,
           size,
+          reduceOnly,
           orderId,
           averagePrice,
           limitPrice,

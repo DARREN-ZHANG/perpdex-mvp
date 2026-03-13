@@ -100,6 +100,7 @@ export interface OrderHistoryItem {
   id: string
   symbol: string
   side: 'LONG' | 'SHORT'
+  action: 'OPEN' | 'CLOSE'
   size: string
   margin: string
   leverage: number

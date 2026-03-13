@@ -201,7 +201,10 @@ export class TradeEngine {
           executedPrice: markPrice,
           status: "FILLED",
           filledAt: new Date(),
-          clientOrderId
+          clientOrderId,
+          metadata: {
+            action: "OPEN"
+          }
         }
       });
 
@@ -376,7 +379,11 @@ export class TradeEngine {
           leverage,
           executedPrice: markPrice,
           status: "FILLED",
-          filledAt: new Date()
+          filledAt: new Date(),
+          metadata: {
+            action: "CLOSE",
+            closingPositionSide: position.side
+          }
         }
       });
 

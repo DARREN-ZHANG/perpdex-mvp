@@ -28,6 +28,7 @@ export interface OrderHistoryItem {
   id: string;
   symbol: string;
   side: string;
+  action: "OPEN" | "CLOSE";
   size: string;
   margin: string;
   leverage: number;
@@ -167,6 +168,15 @@ export class BalanceService {
       id: order.id,
       symbol: order.symbol,
       side: order.side,
+      action:
+        order.metadata &&
+        typeof order.metadata === "object" &&
+        "action" in order.metadata &&
+        (order.metadata.action === "OPEN" || order.metadata.action === "CLOSE")
+          ? order.metadata.action
+          : order.margin === BigInt(0)
+            ? "CLOSE"
+            : "OPEN",
       size: order.size.toString(),
       margin: order.margin.toString(),
       leverage: order.leverage,

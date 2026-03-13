@@ -5,6 +5,7 @@ import { formatUnits } from 'viem'
 import { Loader2 } from 'lucide-react'
 import { useOrderHistory } from '@/hooks/use-order-history'
 import { useTransactions } from '@/hooks/use-transactions'
+import type { OrderHistoryItem } from '@/types/api'
 
 const USDC_DECIMALS = 6
 const TABS = ['订单记录', '资金流水'] as const
@@ -21,6 +22,14 @@ function formatTime(value: string): string {
     minute: '2-digit',
     second: '2-digit',
   })
+}
+
+function getOrderLabel(order: OrderHistoryItem): string {
+  if (order.action === 'CLOSE') {
+    return order.side === 'LONG' ? `平空 ${order.symbol}` : `平多 ${order.symbol}`
+  }
+
+  return order.side === 'LONG' ? `开多 ${order.symbol}` : `开空 ${order.symbol}`
 }
 
 export function RecentTrades() {
@@ -155,7 +164,7 @@ export function RecentTrades() {
             >
               <span className="text-pro-gray-500 font-mono text-xs">{formatTime(order.createdAt)}</span>
               <span className={`font-medium ${order.side === 'LONG' ? 'text-pro-accent-green' : 'text-pro-accent-red'}`}>
-                {order.side === 'LONG' ? `开多 ${order.symbol}` : `开空 ${order.symbol}`}
+                {getOrderLabel(order)}
               </span>
               <div className="min-w-0">
                 <div className="font-mono font-medium truncate">
@@ -174,10 +183,11 @@ export function RecentTrades() {
                 </div>
               </div>
               <span className="font-mono font-medium">
-                {parseFloat(formatUSDC(order.margin)).toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                })}{' '}
-                USDC
+                {order.action === 'CLOSE'
+                  ? '平仓'
+                  : `${parseFloat(formatUSDC(order.margin)).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                    })} USDC`}
               </span>
               <span className={`${STATUS_BADGE_CLASS} ${getOrderStatusClass(order.status)}`}>
                 {getOrderStatusLabel(order.status)}
