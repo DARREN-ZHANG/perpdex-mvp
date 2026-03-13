@@ -19,6 +19,13 @@
 - PostgreSQL 15+
 - Redis 7+
 - Foundry (智能合约开发)
+- 可访问外网的网络环境
+
+> 重要说明
+>
+> - 推荐使用 Docker 启动 PostgreSQL 和 Redis，避免本地数据库用户/密码不一致。
+> - 本项目本地完整验证仍依赖外网访问 Hyperliquid 和 Binance；如果网络受限，前端行情、下单、风控价格会异常。
+> - 本地登录必须使用 `SIWE_DOMAIN=localhost:3000`，否则钱包签名校验会失败。
 
 ### 1. 安装依赖
 
@@ -37,6 +44,17 @@ pnpm install
 - 部署 MockUSDC 和 Vault 合约
 - 生成 `.env.local` 环境变量文件
 
+执行完成后，请确认以下文件存在：
+
+- 根目录 `.env.local`
+- `apps/web/.env.local`
+
+如果你的环境里没有自动生成 `apps/web/.env.local`，请手动复制：
+
+```bash
+cp .env.local apps/web/.env.local
+```
+
 ### 3. 启动基础设施
 
 ```bash
@@ -48,18 +66,51 @@ brew services start postgresql@15
 brew services start redis
 ```
 
+如果你不用 Docker，而是使用本地 PostgreSQL，请确保数据库连接信息与后端默认值一致：
+
+```text
+DATABASE_URL=postgresql://perpdex:perpdex_password@localhost:5432/perpdex?schema=public
+```
+
+这意味着除了创建数据库 `perpdex`，你还需要准备：
+
+- 用户名：`perpdex`
+- 密码：`perpdex_password`
+
 ### 4. 初始化数据库
 
 ```bash
 # 创建数据库（首次）
-psql postgres -c "CREATE DATABASE perpdex;"
+psql postgres -c "CREATE USER perpdex WITH PASSWORD 'perpdex_password';"
+psql postgres -c "CREATE DATABASE perpdex OWNER perpdex;"
+
+# 为 Prisma 提供数据库连接
+export DATABASE_URL="postgresql://perpdex:perpdex_password@localhost:5432/perpdex?schema=public"
 
 # 运行迁移
 pnpm db:generate
 pnpm db:migrate
 ```
 
-### 5. 启动开发服务
+如果你使用 Docker 启动的 PostgreSQL，也仍然建议执行上面的 `export DATABASE_URL=...`，否则 Prisma 命令无法读取数据库地址。
+
+### 5. 准备后端本地环境
+
+启动服务前，请先在当前 shell 中导出本地登录所需的域名配置：
+
+```bash
+export SIWE_DOMAIN=localhost:3000
+```
+
+说明：
+
+- `pnpm dev` 下 API 开发脚本已经内置了本地 `CHAIN_ID`、`RPC_URL`、`VAULT_CONTRACT_ADDRESS` 和测试私钥配置
+- 但它没有内置 `SIWE_DOMAIN`
+- 如果不额外导出 `SIWE_DOMAIN=localhost:3000`，钱包登录会失败
+
+如果你已经运行过 `./scripts/local-chain.sh start`，也建议核对根目录 `.local-deployment.json` 中的 `vaultAddress` 是否仍为当前本地链的部署地址
+
+### 6. 启动开发服务
 
 ```bash
 # 同时启动 API 和 Frontend
@@ -70,13 +121,33 @@ pnpm dev
 - 前端: http://localhost:3000
 - API: http://localhost:3001
 
-### 6. 配置钱包
+启动后建议先验证：
+
+- 打开 `http://localhost:3000`
+- 打开 `http://localhost:3001/api/health`
+- 确认健康检查返回 `ok` 或 `degraded`
+
+### 7. 配置钱包
 
 在 MetaMask 中：
 1. 导入测试账户私钥：`0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
 2. 添加自定义网络：
    - RPC URL: `http://localhost:8545`
    - Chain ID: `31337`
+3. 确认当前钱包网络已切换到 `31337`
+
+### 8. 第三方验证建议顺序
+
+为了降低启动失败概率，建议第三方按下面顺序验证：
+
+1. `pnpm install`
+2. `./scripts/local-chain.sh start`
+3. `docker-compose up -d postgres redis`
+4. `export DATABASE_URL=postgresql://perpdex:perpdex_password@localhost:5432/perpdex?schema=public`
+5. `pnpm db:generate && pnpm db:migrate`
+6. `export SIWE_DOMAIN=localhost:3000`
+7. `pnpm dev`
+8. 打开前端连接钱包，执行登录、充值、下单流程
 
 ## 系统架构
 
