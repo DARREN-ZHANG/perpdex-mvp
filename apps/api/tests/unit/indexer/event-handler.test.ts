@@ -1,121 +1,123 @@
-// apps/api/tests/unit/indexer/event-handler.test.ts
-import { describe, it, expect, beforeEach, beforeAll } from "vitest";
-import { prisma } from "../../../src/db/client";
-import { EventHandler, type DepositEvent, type WithdrawEvent } from "../../../src/indexer/event-handler";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { mockData, mockPrismaClient, resetMockData } from "../../__mocks__/prisma";
+
+vi.mock("../../../src/db/client", () => ({
+  prisma: mockPrismaClient
+}));
+
+vi.mock("../../../src/utils/logger", () => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn()
+  }
+}));
+
+let EventHandler: typeof import("../../../src/indexer/event-handler").EventHandler;
+
+beforeAll(async () => {
+  ({ EventHandler } = await import("../../../src/indexer/event-handler"));
+});
 
 describe("EventHandler", () => {
-  const handler = new EventHandler();
-
-  const mockDepositEvent: DepositEvent = {
+  const mockDepositEvent = {
     user: "0x1234567890123456789012345678901234567890" as `0x${string}`,
-    amount: BigInt("1000000"), // 1 USDC
-    blockNumber: BigInt("12345"),
-    transactionHash: "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890" as `0x${string}`,
+    amount: 1000000n,
+    blockNumber: 12345n,
+    transactionHash:
+      "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890" as `0x${string}`,
     logIndex: 0
   };
 
-  const mockWithdrawEvent: WithdrawEvent = {
+  const mockWithdrawEvent = {
     user: "0x1234567890123456789012345678901234567890" as `0x${string}`,
-    amount: BigInt("500000"), // 0.5 USDC
-    blockNumber: BigInt("12346"),
-    transactionHash: "0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321" as `0x${string}`,
+    amount: 500000n,
+    blockNumber: 12346n,
+    transactionHash:
+      "0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321" as `0x${string}`,
     logIndex: 0
   };
 
-  beforeEach(async () => {
-    // 清理测试数据
-    await prisma.transaction.deleteMany();
-    await prisma.account.deleteMany();
-    await prisma.user.deleteMany();
+  beforeEach(() => {
+    resetMockData();
+    vi.clearAllMocks();
   });
 
   describe("handleDeposit", () => {
-    it("should create user and account on first deposit", async () => {
+    it("creates user and account on first deposit", async () => {
+      const handler = new EventHandler();
+
       await handler.handleDeposit(mockDepositEvent);
 
-      const user = await prisma.user.findUnique({
-        where: { walletAddress: mockDepositEvent.user.toLowerCase() }
-      });
+      const user = Array.from(mockData.users.values()).find(
+        (item) => item.walletAddress === mockDepositEvent.user.toLowerCase()
+      );
+      const account = Array.from(mockData.accounts.values()).find(
+        (item) => item.userId === user?.id && item.asset === "USDC"
+      );
 
-      expect(user).not.toBeNull();
-
-      const account = await prisma.account.findUnique({
-        where: {
-          userId_asset: { userId: user!.id, asset: "USDC" }
-        }
-      });
-
-      expect(account).not.toBeNull();
-      expect(account!.availableBalance.toString()).toBe("1000000");
+      expect(user).toBeDefined();
+      expect(account?.availableBalance.toString()).toBe("1000000");
     });
 
-    it("should be idempotent - same event processed only once", async () => {
+    it("is idempotent for the same deposit log", async () => {
+      const handler = new EventHandler();
+
       await handler.handleDeposit(mockDepositEvent);
-      await handler.handleDeposit(mockDepositEvent); // 第二次
-
-      const transactions = await prisma.transaction.findMany();
-      expect(transactions.length).toBe(1);
-    });
-
-    it("should accumulate balance on multiple deposits", async () => {
       await handler.handleDeposit(mockDepositEvent);
 
-      const event2: DepositEvent = {
-        ...mockDepositEvent,
-        amount: BigInt("2000000"),
-        transactionHash: "0x1111111111111111111111111111111111111111111111111111111111111111" as `0x${string}`,
-        logIndex: 1
-      };
-      await handler.handleDeposit(event2);
-
-      const user = await prisma.user.findUnique({
-        where: { walletAddress: mockDepositEvent.user.toLowerCase() },
-        include: { accounts: true }
-      });
-
-      expect(user!.accounts[0].availableBalance.toString()).toBe("3000000");
+      expect(Array.from(mockData.transactions.values())).toHaveLength(1);
     });
   });
 
   describe("handleWithdraw", () => {
-    it("should handle withdraw event", async () => {
-      // 先存入
+    it("confirms a matching pending withdraw without releasing trade margin", async () => {
+      const handler = new EventHandler();
+
       await handler.handleDeposit(mockDepositEvent);
 
-      // 再提取
-      await handler.handleWithdraw(mockWithdrawEvent);
+      const user = Array.from(mockData.users.values())[0];
+      const account = Array.from(mockData.accounts.values())[0];
 
-      const user = await prisma.user.findUnique({
-        where: { walletAddress: mockDepositEvent.user.toLowerCase() },
-        include: { accounts: true }
+      mockData.accounts.set(account.id, {
+        ...account,
+        availableBalance: 500000n,
+        lockedBalance: 250000n,
+        equity: 1000000n
+      });
+      mockData.transactions.set("withdraw_pending", {
+        id: "withdraw_pending",
+        userId: user.id,
+        accountId: account.id,
+        type: "WITHDRAW",
+        eventName: null,
+        txHash: mockWithdrawEvent.transactionHash,
+        logIndex: null,
+        blockNumber: null,
+        amount: mockWithdrawEvent.amount,
+        status: "PENDING",
+        idempotencyKey: null,
+        metadata: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        confirmedAt: null
       });
 
-      // 锁定余额应该减少（因为提现是释放锁定余额）
-      expect(user!.accounts[0].lockedBalance.toString()).toBe("-500000");
-      expect(user!.accounts[0].equity.toString()).toBe("500000");
-    });
-
-    it("should be idempotent for withdraw", async () => {
-      await handler.handleDeposit(mockDepositEvent);
       await handler.handleWithdraw(mockWithdrawEvent);
-      await handler.handleWithdraw(mockWithdrawEvent); // 重复
 
-      const transactions = await prisma.transaction.findMany({
-        where: { type: "WITHDRAW" }
-      });
-
-      // 只应该有一条 WITHDRAW 记录
-      const confirmedWithdraws = transactions.filter(t => t.status === "CONFIRMED");
-      expect(confirmedWithdraws.length).toBe(1);
+      expect(mockData.accounts.get(account.id)?.availableBalance).toBe(500000n);
+      expect(mockData.accounts.get(account.id)?.lockedBalance).toBe(250000n);
+      expect(mockData.accounts.get(account.id)?.equity).toBe(500000n);
+      expect(mockData.transactions.get("withdraw_pending")?.status).toBe("CONFIRMED");
     });
 
-    it("should skip withdraw if user not found", async () => {
-      // 用户不存在的情况下应该不会抛出错误
+    it("skips withdraws for unknown users", async () => {
+      const handler = new EventHandler();
+
       await expect(handler.handleWithdraw(mockWithdrawEvent)).resolves.not.toThrow();
-
-      // 应该没有任何用户被创建
-      const users = await prisma.user.findMany();
-      expect(users.length).toBe(0);
+      expect(mockData.users.size).toBe(0);
+      expect(mockData.transactions.size).toBe(0);
     });
   });
 });

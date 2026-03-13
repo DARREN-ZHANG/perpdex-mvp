@@ -7,6 +7,7 @@ import { Server } from "socket.io";
 import type { FastifyInstance } from "fastify";
 import { config } from "../config/index";
 import { logger } from "../utils/logger";
+import { extractBearerToken } from "../utils/jwt";
 
 let io: Server | null = null;
 
@@ -45,8 +46,13 @@ export function createSocketServer(app: FastifyInstance): Server {
 
   // Authentication middleware
   io.use((socket, next) => {
-    const token =
-      socket.handshake.auth.token || socket.handshake.headers.authorization;
+    const authToken = socket.handshake.auth.token;
+    const bearerToken = extractBearerToken(
+      typeof socket.handshake.headers.authorization === "string"
+        ? socket.handshake.headers.authorization
+        : undefined
+    );
+    const token = authToken || bearerToken;
 
     if (!token) {
       // Allow anonymous connections for market data
@@ -98,15 +104,21 @@ export function createSocketServer(app: FastifyInstance): Server {
         socket.emit("error", { message: "Authentication required" });
         return;
       }
-      socket.join(`position:${data.userId}`);
+      const subscribedUserId = socket.data.user.id;
+      socket.join(`position:${subscribedUserId}`);
       logger.debug(
-        { socketId: socket.id, userId: data.userId },
+        {
+          socketId: socket.id,
+          requestedUserId: data.userId,
+          subscribedUserId
+        },
         "Subscribed to position"
       );
     });
 
     socket.on("unsubscribe:position", (data: { userId: string }) => {
-      socket.leave(`position:${data.userId}`);
+      const subscribedUserId = socket.data.user?.id ?? data.userId;
+      socket.leave(`position:${subscribedUserId}`);
     });
 
     socket.on("disconnect", (reason) => {

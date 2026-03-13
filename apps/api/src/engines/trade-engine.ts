@@ -70,6 +70,23 @@ export class TradeEngine {
     return 10;
   }
 
+  private async getOpenMarginTotal(
+    tx: Prisma.TransactionClient,
+    userId: string
+  ): Promise<bigint> {
+    const openPositions = await tx.position.findMany({
+      where: {
+        userId,
+        status: "OPEN"
+      },
+      select: {
+        margin: true
+      }
+    });
+
+    return openPositions.reduce((total, openPosition) => total + openPosition.margin, BigInt(0));
+  }
+
   private async enqueueHedgeTask(payload: HedgeJobData): Promise<void> {
     try {
       await addHedgeTask(payload);
@@ -154,20 +171,25 @@ export class TradeEngine {
         throw new AppError("INSUFFICIENT_BALANCE", "Insufficient balance");
       }
 
-      // 锁定保证金
-      const updatedAccount = await tx.account.update({
-        where: { id: account!.id },
+      const reservedAccount = await tx.account.updateMany({
+        where: {
+          id: account.id,
+          availableBalance: { gte: margin }
+        },
         data: {
-          availableBalance: { decrement: margin },
-          lockedBalance: { increment: margin }
+          availableBalance: { decrement: margin }
         }
       });
+
+      if (reservedAccount.count !== 1) {
+        throw new AppError("INSUFFICIENT_BALANCE", "Insufficient balance");
+      }
 
       // 创建保证金锁定交易记录
       await tx.transaction.create({
         data: {
           userId,
-          accountId: account!.id,
+          accountId: account.id,
           type: "MARGIN_LOCK",
           amount: margin,
           status: "CONFIRMED"
@@ -218,6 +240,14 @@ export class TradeEngine {
       await tx.order.update({
         where: { id: order.id },
         data: { positionId: position.id }
+      });
+
+      const lockedMarginTotal = await this.getOpenMarginTotal(tx, userId);
+      const updatedAccount = await tx.account.update({
+        where: { id: account.id },
+        data: {
+          lockedBalance: lockedMarginTotal
+        }
       });
 
       const payload = {
@@ -352,6 +382,26 @@ export class TradeEngine {
 
     // 4. 事务：更新仓位、创建平仓订单、释放保证金
     const result = await prisma.$transaction(async (tx) => {
+      const claimedPosition = await tx.position.updateMany({
+        where: {
+          id: positionId,
+          userId,
+          status: "OPEN"
+        },
+        data: {
+          status: "CLOSED",
+          unrealizedPnl: realizedPnl,
+          markPrice,
+          closedAt: new Date()
+        }
+      });
+
+      if (claimedPosition.count !== 1) {
+        throw new AppError("POSITION_NOT_FOUND", "Position not found or already closed", {
+          statusCode: 404
+        });
+      }
+
       // 创建平仓订单
       const order = await tx.order.create({
         data: {
@@ -373,17 +423,6 @@ export class TradeEngine {
         }
       });
 
-      // 更新仓位状态
-      await tx.position.update({
-        where: { id: positionId },
-        data: {
-          status: "CLOSED",
-          unrealizedPnl: realizedPnl,
-          markPrice,
-          closedAt: new Date()
-        }
-      });
-
       // 获取账户
       const account = await tx.account.findUnique({
         where: {
@@ -397,11 +436,28 @@ export class TradeEngine {
         });
       }
 
+      const remainingLockedMargin = await this.getOpenMarginTotal(tx, userId);
+      const expectedLockedBeforeSettlement = remainingLockedMargin + position.margin;
+
+      if (account.lockedBalance !== expectedLockedBeforeSettlement) {
+        logger.warn({
+          msg: "Reconciling stale locked balance during position settlement",
+          userId,
+          positionId,
+          accountId: account.id,
+          lockedBalance: account.lockedBalance.toString(),
+          expectedLockedBalance: expectedLockedBeforeSettlement.toString(),
+          remainingLockedMargin: remainingLockedMargin.toString()
+        });
+      }
+
       // 释放保证金 + 结算盈亏
       const updatedAccount = await tx.account.update({
-        where: { id: account.id },
+        where: {
+          id: account.id
+        },
         data: {
-          lockedBalance: { decrement: position.margin },
+          lockedBalance: remainingLockedMargin,
           availableBalance: { increment: balanceChange }
         }
       });
@@ -538,17 +594,29 @@ export class TradeEngine {
     });
 
     const hedgeTaskId = crypto.randomUUID();
+    const hedgePayload: HedgeJobData = {
+      taskId: hedgeTaskId,
+      source: "LIQUIDATION",
+      userId: position.userId,
+      positionId,
+      symbol: "BTC",
+      side: position.side,
+      size: position.positionSize.toString(),
+      referencePrice: markPrice.toString(),
+      priority: "HIGH",
+      retryCount: 0,
+      maxRetries: 3,
+      idempotencyKey: `hedge-liquidation-${positionId}`,
+      requestedAt: new Date().toISOString()
+    };
 
     // 类似 closePosition，但标记为 LIQUIDATED
-    await prisma.$transaction(async (tx) => {
-      const account = await tx.account.findUnique({
+    const liquidationResult = await prisma.$transaction(async (tx) => {
+      const claimedPosition = await tx.position.updateMany({
         where: {
-          userId_asset: { userId: position.userId, asset: "USDC" }
-        }
-      });
-
-      await tx.position.update({
-        where: { id: positionId },
+          id: positionId,
+          status: "OPEN"
+        },
         data: {
           status: "LIQUIDATED",
           markPrice,
@@ -556,12 +624,43 @@ export class TradeEngine {
         }
       });
 
-      await tx.account.update({
+      if (claimedPosition.count !== 1) {
+        return null;
+      }
+
+      const account = await tx.account.findUnique({
         where: {
           userId_asset: { userId: position.userId, asset: "USDC" }
+        }
+      });
+
+      if (!account) {
+        throw new AppError("ACCOUNT_NOT_FOUND", "Account not found", {
+          statusCode: 404
+        });
+      }
+
+      const remainingLockedMargin = await this.getOpenMarginTotal(tx, position.userId);
+      const expectedLockedBeforeSettlement = remainingLockedMargin + position.margin;
+
+      if (account.lockedBalance !== expectedLockedBeforeSettlement) {
+        logger.warn({
+          msg: "Reconciling stale locked balance during liquidation settlement",
+          userId: position.userId,
+          positionId,
+          accountId: account.id,
+          lockedBalance: account.lockedBalance.toString(),
+          expectedLockedBalance: expectedLockedBeforeSettlement.toString(),
+          remainingLockedMargin: remainingLockedMargin.toString()
+        });
+      }
+
+      await tx.account.update({
+        where: {
+          id: account.id
         },
         data: {
-          lockedBalance: { decrement: position.margin }
+          lockedBalance: remainingLockedMargin
           // 清算时保证金损失
         }
       });
@@ -589,26 +688,18 @@ export class TradeEngine {
           status: "PENDING",
           retryCount: 0,
           maxRetryCount: 3,
-          payload: {
-            taskId: hedgeTaskId,
-            source: "LIQUIDATION",
-            userId: position.userId,
-            positionId,
-            symbol: "BTC",
-            side: position.side,
-            size: position.positionSize.toString(),
-            referencePrice: markPrice.toString(),
-            priority: "HIGH",
-            retryCount: 0,
-            maxRetries: 3,
-            idempotencyKey: `hedge-liquidation-${positionId}`,
-            requestedAt: new Date().toISOString()
-          }
+          payload: hedgePayload
         }
       });
+
+      return hedgePayload;
     }, {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable
     });
+
+    if (!liquidationResult) {
+      return;
+    }
 
     // 推送清算更新
     emitPositionUpdate(position.userId, {
@@ -620,21 +711,7 @@ export class TradeEngine {
       }
     });
 
-    await this.enqueueHedgeTask({
-      taskId: hedgeTaskId,
-      source: "LIQUIDATION",
-      userId: position.userId,
-      positionId,
-      symbol: "BTC",
-      side: position.side,
-      size: position.positionSize.toString(),
-      referencePrice: markPrice.toString(),
-      priority: "HIGH",
-      retryCount: 0,
-      maxRetries: 3,
-      idempotencyKey: `hedge-liquidation-${positionId}`,
-      requestedAt: new Date().toISOString()
-    });
+    await this.enqueueHedgeTask(liquidationResult);
   }
 
   /**

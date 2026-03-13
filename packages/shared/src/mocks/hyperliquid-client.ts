@@ -52,7 +52,7 @@ export class MockHyperliquidClient {
         symbol: parsedInput.symbol,
         side: parsedInput.side,
         size: parsedInput.size,
-        status: "failed",
+        status: "FAILED",
         errorMessage: this.nextFailureMessage,
         submittedAt,
         updatedAt: submittedAt
@@ -68,7 +68,7 @@ export class MockHyperliquidClient {
       symbol: parsedInput.symbol,
       side: parsedInput.side,
       size: parsedInput.size,
-      status: this.autoFill ? "filled" : "submitted",
+      status: this.autoFill ? "FILLED" : "SUBMITTED",
       averagePrice: parsedInput.referencePrice ?? "65000.00",
       submittedAt,
       updatedAt: submittedAt

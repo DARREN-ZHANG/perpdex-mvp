@@ -28,6 +28,13 @@ export interface VerifySiweResult {
   address: string;
   nonce: string;
   chainId: number;
+  domain: string;
+  uri: string;
+  expirationTime: string | null;
+}
+
+export function buildSiweUri(domain: string): string {
+  return `http://${domain}`;
 }
 
 /**
@@ -41,7 +48,7 @@ export function generateSiweMessage(input: GenerateSiweInput): GenerateSiweResul
     domain: input.domain,
     address: input.walletAddress,
     statement: "Sign in with Ethereum to the app.",
-    uri: `http://${input.domain}`,
+    uri: buildSiweUri(input.domain),
     version: "1",
     chainId: input.chainId,
     nonce: input.nonce,
@@ -76,6 +83,9 @@ export async function verifySiweSignature(input: VerifySiweInput): Promise<Verif
   return {
     address: result.data.address,
     nonce: result.data.nonce ?? "",
-    chainId: result.data.chainId ?? 1
+    chainId: result.data.chainId ?? 1,
+    domain: result.data.domain ?? "",
+    uri: result.data.uri ?? "",
+    expirationTime: result.data.expirationTime ?? null
   };
 }

@@ -15,60 +15,78 @@ import {
 import { startIndexer } from "./indexer";
 
 async function main() {
-  // 初始化队列
-  await initializeQueues();
+  const roles = config.server.roles;
+  const startApiServer = roles.has("api");
+  const startWorker = roles.has("worker");
+  const startSchedulers = roles.has("scheduler");
+  const startIndexerService = roles.has("indexer") && config.server.nodeEnv !== "test";
+  const shouldInitializeQueues = startApiServer || startWorker;
 
-  // 启动 Hedge Worker
-  startHedgeWorker();
+  if (shouldInitializeQueues) {
+    await initializeQueues();
+  }
 
-  // 启动定时任务
-  const liquidationScheduler = startLiquidationScheduler();
-  const reconciliationScheduler = startReconciliationScheduler();
+  if (startWorker) {
+    startHedgeWorker();
+  }
 
-  // 启动 Indexer（非测试环境）
+  const liquidationScheduler = startSchedulers
+    ? startLiquidationScheduler()
+    : undefined;
+  const reconciliationScheduler = startSchedulers
+    ? startReconciliationScheduler()
+    : undefined;
+
   let vaultIndexer: ReturnType<typeof startIndexer> | undefined;
-  if (config.server.nodeEnv !== "test") {
+  if (startIndexerService) {
     vaultIndexer = startIndexer();
   }
 
-  const app = await buildServer();
+  const app = startApiServer ? await buildServer() : undefined;
 
-  // Start HTTP server
-  const address = await app.listen({
-    host: "0.0.0.0",
-    port: config.server.port
+  if (app) {
+    const address = await app.listen({
+      host: "0.0.0.0",
+      port: config.server.port
+    });
+
+    logger.info(`Server listening on ${address}`);
+    logger.info(`Environment: ${config.server.nodeEnv}`);
+
+    createSocketServer(app);
+    logger.info("Socket.IO server initialized");
+  }
+
+  logger.info({
+    msg: "Process roles initialized",
+    roles: Array.from(roles)
   });
-
-  logger.info(`Server listening on ${address}`);
-  logger.info(`Environment: ${config.server.nodeEnv}`);
-
-  // Initialize Socket.IO
-  createSocketServer(app);
-  logger.info("Socket.IO server initialized");
 
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     logger.info(`Received ${signal}, shutting down gracefully...`);
 
-    // 停止定时任务
-    liquidationScheduler.stop();
-    reconciliationScheduler.stop();
+    liquidationScheduler?.stop();
+    reconciliationScheduler?.stop();
 
-    // 停止 Indexer
     if (vaultIndexer) {
       vaultIndexer.stop();
     }
 
-    // 停止 Worker
-    await stopHedgeWorker();
+    if (startWorker) {
+      await stopHedgeWorker();
+    }
 
-    // 关闭队列
-    await closeQueues();
+    if (shouldInitializeQueues) {
+      await closeQueues();
+    }
 
     closeSocketServer();
 
-    await app.close();
-    logger.info("Server closed");
+    if (app) {
+      await app.close();
+      logger.info("Server closed");
+    }
 
     process.exit(0);
   };

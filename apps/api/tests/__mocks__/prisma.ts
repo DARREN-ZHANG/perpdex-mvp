@@ -89,6 +89,48 @@ class PrismaUserDelegate {
     mockData.users.set(args.where.id, updated as User);
     return updated as User;
   });
+
+  upsert = vi.fn(async (args: {
+    where: { walletAddress: string };
+    create: Partial<User>;
+    update: Partial<User>;
+  }) => {
+    const existing = Array.from(mockData.users.values()).find(
+      (user) => user.walletAddress === args.where.walletAddress
+    );
+
+    if (existing) {
+      const updated = {
+        ...existing,
+        ...args.update,
+        updatedAt: new Date()
+      } as User;
+      mockData.users.set(existing.id, updated);
+      return updated;
+    }
+
+    return this.create({
+      data: {
+        ...args.create,
+        walletAddress: args.where.walletAddress
+      }
+    });
+  });
+}
+
+function matchesBigIntConstraint(
+  value: bigint,
+  condition: { gte?: bigint | number } | undefined
+): boolean {
+  if (!condition) {
+    return true;
+  }
+
+  if (condition.gte !== undefined && value < BigInt(condition.gte)) {
+    return false;
+  }
+
+  return true;
 }
 
 // 账户 Delegate Mock
@@ -148,14 +190,100 @@ class PrismaAccountDelegate {
       lockedBalance = BigInt(args.data.lockedBalance);
     }
 
+    let equity = account.equity;
+    if (typeof args.data.equity === "object") {
+      const increment = args.data.equity.increment !== undefined ? BigInt(args.data.equity.increment) : BigInt(0);
+      const decrement = args.data.equity.decrement !== undefined ? BigInt(args.data.equity.decrement) : BigInt(0);
+      equity = account.equity + increment - decrement;
+    } else if (typeof args.data.equity === "bigint") {
+      equity = args.data.equity;
+    } else if (typeof args.data.equity === "number") {
+      equity = BigInt(args.data.equity);
+    }
+
     const updated = {
       ...account,
       availableBalance,
       lockedBalance,
+      equity,
       updatedAt: new Date()
     };
     mockData.accounts.set(account.id, updated as Account);
     return updated as Account;
+  });
+
+  updateMany = vi.fn(async (args: {
+    where: {
+      id?: string;
+      userId_asset?: { userId: string; asset: string };
+      availableBalance?: { gte?: bigint | number };
+      lockedBalance?: { gte?: bigint | number };
+    };
+    data: Prisma.AccountUpdateInput;
+  }) => {
+    const accounts = Array.from(mockData.accounts.values()).filter((account) => {
+      if (args.where.id && account.id !== args.where.id) {
+        return false;
+      }
+      if (
+        args.where.userId_asset &&
+        (
+          account.userId !== args.where.userId_asset.userId ||
+          account.asset !== args.where.userId_asset.asset
+        )
+      ) {
+        return false;
+      }
+
+      return (
+        matchesBigIntConstraint(account.availableBalance, args.where.availableBalance) &&
+        matchesBigIntConstraint(account.lockedBalance, args.where.lockedBalance)
+      );
+    });
+
+    for (const account of accounts) {
+      await this.update({
+        where: { id: account.id },
+        data: args.data
+      });
+    }
+
+    return { count: accounts.length };
+  });
+
+  upsert = vi.fn(async (args: {
+    where: { userId_asset: { userId: string; asset: string } };
+    create: Partial<Account>;
+    update: Partial<Account>;
+  }) => {
+    const existing = Array.from(mockData.accounts.values()).find(
+      (account) =>
+        account.userId === args.where.userId_asset.userId &&
+        account.asset === args.where.userId_asset.asset
+    );
+
+    if (existing) {
+      const updated = {
+        ...existing,
+        ...args.update,
+        updatedAt: new Date()
+      } as Account;
+      mockData.accounts.set(existing.id, updated);
+      return updated;
+    }
+
+    const account: Account = {
+      id: args.create.id || `account_${Date.now()}`,
+      userId: args.create.userId || args.where.userId_asset.userId,
+      asset: (args.create.asset as Account["asset"]) || args.where.userId_asset.asset,
+      availableBalance: args.create.availableBalance || 0n,
+      lockedBalance: args.create.lockedBalance || 0n,
+      equity: args.create.equity || 0n,
+      createdAt: args.create.createdAt || new Date(),
+      updatedAt: args.create.updatedAt || new Date()
+    };
+    mockData.accounts.set(account.id, account);
+    return account;
   });
 }
 
@@ -244,6 +372,26 @@ class PrismaPositionDelegate {
     return mockData.positions.get(args.where.id) || null;
   });
 
+  findMany = vi.fn(async (args?: {
+    where?: { userId?: string; status?: string };
+    select?: { margin?: boolean };
+  }) => {
+    let result = Array.from(mockData.positions.values());
+
+    if (args?.where?.userId) {
+      result = result.filter((position) => position.userId === args.where!.userId);
+    }
+    if (args?.where?.status) {
+      result = result.filter((position) => position.status === args.where!.status);
+    }
+
+    if (args?.select?.margin) {
+      return result.map((position) => ({ margin: position.margin }));
+    }
+
+    return result;
+  });
+
   create = vi.fn(async (args: { data: Partial<Position> }) => {
     const position: Position = {
       id: args.data.id || `pos_${Date.now()}`,
@@ -277,10 +425,95 @@ class PrismaPositionDelegate {
     mockData.positions.set(args.where.id, updated as Position);
     return updated as Position;
   });
+
+  updateMany = vi.fn(async (args: {
+    where: { id?: string; userId?: string; status?: string };
+    data: Partial<Position>;
+  }) => {
+    const positions = Array.from(mockData.positions.values()).filter((position) => {
+      if (args.where.id && position.id !== args.where.id) {
+        return false;
+      }
+      if (args.where.userId && position.userId !== args.where.userId) {
+        return false;
+      }
+      if (args.where.status && position.status !== args.where.status) {
+        return false;
+      }
+
+      return true;
+    });
+
+    for (const position of positions) {
+      await this.update({
+        where: { id: position.id },
+        data: args.data
+      });
+    }
+
+    return { count: positions.length };
+  });
 }
 
 // 交易记录 Delegate Mock
 class PrismaTransactionDelegate {
+  findUnique = vi.fn(async (args: { where: { id?: string; idempotencyKey?: string } }) => {
+    if (args.where.id) {
+      return mockData.transactions.get(args.where.id) || null;
+    }
+
+    if (args.where.idempotencyKey) {
+      return Array.from(mockData.transactions.values()).find(
+        (transaction) => transaction.idempotencyKey === args.where.idempotencyKey
+      ) || null;
+    }
+
+    return null;
+  });
+
+  findFirst = vi.fn(async (args?: {
+    where?: {
+      userId?: string;
+      type?: string;
+      status?: string;
+      txHash?: string | null;
+      amount?: bigint;
+    };
+    orderBy?: { createdAt: "desc" | "asc" };
+  }) => {
+    let result = Array.from(mockData.transactions.values());
+
+    if (args?.where?.userId) {
+      result = result.filter((tx) => tx.userId === args.where!.userId);
+    }
+    if (args?.where?.type) {
+      result = result.filter((tx) => tx.type === args.where!.type);
+    }
+    if (args?.where?.status) {
+      result = result.filter((tx) => tx.status === args.where!.status);
+    }
+    if (args?.where?.txHash !== undefined) {
+      result = result.filter((tx) => tx.txHash === args.where!.txHash);
+    }
+    if (args?.where?.amount !== undefined) {
+      result = result.filter((tx) => tx.amount === args.where!.amount);
+    }
+
+    if (args?.orderBy?.createdAt === "desc") {
+      result = result.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    }
+
+    return result[0] || null;
+  });
+
+  findMany = vi.fn(async (args?: { where?: { type?: string } }) => {
+    let result = Array.from(mockData.transactions.values());
+    if (args?.where?.type) {
+      result = result.filter((tx) => tx.type === args.where!.type);
+    }
+    return result;
+  });
+
   create = vi.fn(async (args: { data: Partial<Transaction> }) => {
     const transaction: Transaction = {
       id: args.data.id || `tx_${Date.now()}`,
@@ -301,6 +534,22 @@ class PrismaTransactionDelegate {
     };
     mockData.transactions.set(transaction.id, transaction);
     return transaction;
+  });
+
+  update = vi.fn(async (args: { where: { id: string }; data: Partial<Transaction> }) => {
+    const transaction = mockData.transactions.get(args.where.id);
+    if (!transaction) {
+      throw new Error(`Transaction not found: ${args.where.id}`);
+    }
+
+    const updated = {
+      ...transaction,
+      ...args.data,
+      updatedAt: new Date()
+    } as Transaction;
+
+    mockData.transactions.set(args.where.id, updated);
+    return updated;
   });
 }
 
@@ -350,7 +599,15 @@ class PrismaHedgeOrderDelegate {
       referencePrice: args.data.referencePrice || null,
       trigger: (args.data.trigger as "OPEN" | "CLOSE" | "MARGIN_ADJUST" | "LIQUIDATION" | "MANUAL") || "OPEN",
       priority: args.data.priority || 5,
-      status: (args.data.status as "PENDING" | "SUBMITTED" | "FILLED" | "FAILED") || "PENDING",
+      status: (
+        args.data.status as
+          | "PENDING"
+          | "PROCESSING"
+          | "SUBMITTED"
+          | "FILLED"
+          | "FAILED"
+          | "SUBMIT_UNKNOWN"
+      ) || "PENDING",
       retryCount: args.data.retryCount || 0,
       maxRetryCount: args.data.maxRetryCount || 3,
       errorMessage: args.data.errorMessage || null,
@@ -392,9 +649,15 @@ function createTransaction(): PrismaTransaction {
 // Prisma 客户端 Mock
 export const mockPrismaClient = {
   // 事务支持
-  $transaction: vi.fn(async <T>(callback: TransactionCallback<T>): Promise<T> => {
+  $transaction: vi.fn(async <T>(
+    input: TransactionCallback<T> | Promise<unknown>[]
+  ): Promise<T | unknown[]> => {
+    if (Array.isArray(input)) {
+      return Promise.all(input);
+    }
+
     const tx = createTransaction();
-    return callback(tx);
+    return input(tx);
   }),
 
   // 用户操作
@@ -425,6 +688,18 @@ export const mockPrismaClient = {
       };
       mockData.users.set(user.id, user);
       return user;
+    }),
+    update: vi.fn(async (args: { where: { id: string }; data: Partial<User> }) => {
+      const delegate = new PrismaUserDelegate();
+      return delegate.update(args);
+    }),
+    upsert: vi.fn(async (args: {
+      where: { walletAddress: string };
+      create: Partial<User>;
+      update: Partial<User>;
+    }) => {
+      const delegate = new PrismaUserDelegate();
+      return delegate.upsert(args);
     })
   },
 
@@ -484,14 +759,46 @@ export const mockPrismaClient = {
         lockedBalance = BigInt(args.data.lockedBalance);
       }
 
+      let equity = account.equity;
+      if (typeof args.data.equity === "object") {
+        const increment = args.data.equity.increment !== undefined ? BigInt(args.data.equity.increment) : BigInt(0);
+        const decrement = args.data.equity.decrement !== undefined ? BigInt(args.data.equity.decrement) : BigInt(0);
+        equity = account.equity + increment - decrement;
+      } else if (typeof args.data.equity === "bigint") {
+        equity = args.data.equity;
+      } else if (typeof args.data.equity === "number") {
+        equity = BigInt(args.data.equity);
+      }
+
       const updated = {
         ...account,
         availableBalance,
         lockedBalance,
+        equity,
         updatedAt: new Date()
       };
       mockData.accounts.set(account.id, updated as Account);
       return updated as Account;
+    }),
+    updateMany: vi.fn(async (args: {
+      where: {
+        id?: string;
+        userId_asset?: { userId: string; asset: string };
+        availableBalance?: { gte?: bigint | number };
+        lockedBalance?: { gte?: bigint | number };
+      };
+      data: Prisma.AccountUpdateInput;
+    }) => {
+      const delegate = new PrismaAccountDelegate();
+      return delegate.updateMany(args);
+    }),
+    upsert: vi.fn(async (args: {
+      where: { userId_asset: { userId: string; asset: string } };
+      create: Partial<Account>;
+      update: Partial<Account>;
+    }) => {
+      const delegate = new PrismaAccountDelegate();
+      return delegate.upsert(args);
     })
   },
 
@@ -576,6 +883,13 @@ export const mockPrismaClient = {
     findUnique: vi.fn(async (args: { where: { id: string } }) => {
       return mockData.positions.get(args.where.id) || null;
     }),
+    findMany: vi.fn(async (args?: {
+      where?: { userId?: string; status?: string };
+      select?: { margin?: boolean };
+    }) => {
+      const delegate = new PrismaPositionDelegate();
+      return delegate.findMany(args);
+    }),
     create: vi.fn(async (args: { data: Partial<Position> }) => {
       const position: Position = {
         id: args.data.id || `pos_${Date.now()}`,
@@ -607,11 +921,39 @@ export const mockPrismaClient = {
       const updated = { ...position, ...args.data, updatedAt: new Date() };
       mockData.positions.set(args.where.id, updated as Position);
       return updated as Position;
+    }),
+    updateMany: vi.fn(async (args: {
+      where: { id?: string; userId?: string; status?: string };
+      data: Partial<Position>;
+    }) => {
+      const delegate = new PrismaPositionDelegate();
+      return delegate.updateMany(args);
     })
   },
 
   // 交易记录操作
   transaction: {
+    findUnique: vi.fn(async (args: { where: { id?: string; idempotencyKey?: string } }) => {
+      const delegate = new PrismaTransactionDelegate();
+      return delegate.findUnique(args);
+    }),
+    findFirst: vi.fn(async (args?: {
+      where?: {
+        userId?: string;
+        type?: string;
+        status?: string;
+        txHash?: string | null;
+        amount?: bigint;
+      };
+      orderBy?: { createdAt: "desc" | "asc" };
+    }) => {
+      const delegate = new PrismaTransactionDelegate();
+      return delegate.findFirst(args);
+    }),
+    findMany: vi.fn(async (args?: { where?: { type?: string } }) => {
+      const delegate = new PrismaTransactionDelegate();
+      return delegate.findMany(args);
+    }),
     create: vi.fn(async (args: { data: Partial<Transaction> }) => {
       const transaction: Transaction = {
         id: args.data.id || `tx_${Date.now()}`,
@@ -632,6 +974,10 @@ export const mockPrismaClient = {
       };
       mockData.transactions.set(transaction.id, transaction);
       return transaction;
+    }),
+    update: vi.fn(async (args: { where: { id: string }; data: Partial<Transaction> }) => {
+      const delegate = new PrismaTransactionDelegate();
+      return delegate.update(args);
     })
   },
 
@@ -679,7 +1025,15 @@ export const mockPrismaClient = {
         referencePrice: args.data.referencePrice || null,
         trigger: (args.data.trigger as "OPEN" | "CLOSE" | "MARGIN_ADJUST" | "LIQUIDATION" | "MANUAL") || "OPEN",
         priority: args.data.priority || 5,
-        status: (args.data.status as "PENDING" | "SUBMITTED" | "FILLED" | "FAILED") || "PENDING",
+        status: (
+          args.data.status as
+            | "PENDING"
+            | "PROCESSING"
+            | "SUBMITTED"
+            | "FILLED"
+            | "FAILED"
+            | "SUBMIT_UNKNOWN"
+        ) || "PENDING",
         retryCount: args.data.retryCount || 0,
         maxRetryCount: args.data.maxRetryCount || 3,
         errorMessage: args.data.errorMessage || null,

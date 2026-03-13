@@ -17,10 +17,29 @@ interface HyperliquidPosition {
   unrealizedPnl: string;
 }
 
+export type HyperliquidOrderStatus = "FILLED" | "SUBMITTED";
+
 // 订单结果
 interface OrderResult {
+  status: HyperliquidOrderStatus;
   orderId: string;
   averagePrice?: string;
+}
+
+export type HyperliquidOrderErrorKind =
+  | "CONFIG"
+  | "VALIDATION"
+  | "RETRYABLE"
+  | "SUBMIT_UNKNOWN";
+
+export class HyperliquidOrderError extends Error {
+  constructor(
+    readonly kind: HyperliquidOrderErrorKind,
+    message: string
+  ) {
+    super(message);
+    this.name = "HyperliquidOrderError";
+  }
 }
 
 export class HyperliquidClient {
@@ -82,6 +101,57 @@ export class HyperliquidClient {
     }
   }
 
+  ensureTradingReady(): void {
+    if (!this.walletClient || !this.walletAddress) {
+      throw new HyperliquidOrderError(
+        "CONFIG",
+        "Hyperliquid trading client is not initialized"
+      );
+    }
+  }
+
+  private classifyOrderError(error: unknown): HyperliquidOrderError {
+    if (error instanceof HyperliquidOrderError) {
+      return error;
+    }
+
+    const message = error instanceof Error ? error.message : "Unknown error";
+    const normalized = message.toLowerCase();
+
+    if (
+      normalized.includes("timeout") ||
+      normalized.includes("timed out") ||
+      normalized.includes("econnreset") ||
+      normalized.includes("socket hang up") ||
+      normalized.includes("network") ||
+      normalized.includes("fetch failed") ||
+      normalized.includes("unexpected response")
+    ) {
+      return new HyperliquidOrderError("SUBMIT_UNKNOWN", message);
+    }
+
+    if (
+      normalized.includes("asset") ||
+      normalized.includes("invalid") ||
+      normalized.includes("parameter") ||
+      normalized.includes("precision") ||
+      normalized.includes("tick")
+    ) {
+      return new HyperliquidOrderError("VALIDATION", message);
+    }
+
+    if (
+      normalized.includes("rate limit") ||
+      normalized.includes("temporar") ||
+      normalized.includes("unavailable") ||
+      normalized.includes("overloaded")
+    ) {
+      return new HyperliquidOrderError("RETRYABLE", message);
+    }
+
+    return new HyperliquidOrderError("SUBMIT_UNKNOWN", message);
+  }
+
   /**
    * 提交市价订单
    * @param coin 币种，如 "BTC"
@@ -94,20 +164,7 @@ export class HyperliquidClient {
     size: string,
     reduceOnly = false
   ): Promise<OrderResult> {
-    // 如果客户端未初始化，返回 mock 响应
-    if (!this.walletClient || !this.publicClient) {
-      logger.warn({
-        msg: "Hyperliquid client not initialized, returning mock response",
-        coin,
-        side,
-        size,
-        reduceOnly
-      });
-      return {
-        orderId: `mock-${Date.now()}`,
-        averagePrice: "50000"
-      };
-    }
+    this.ensureTradingReady();
 
     try {
       logger.info({
@@ -120,7 +177,7 @@ export class HyperliquidClient {
       });
 
       // 获取资产的元数据，找到资产索引和 tick size
-      const meta = await this.publicClient.meta();
+      const meta = await this.publicClient!.meta();
       const assetIndex = meta.universe.findIndex(
         (item: { name: string }) => item.name === coin
       );
@@ -149,7 +206,7 @@ export class HyperliquidClient {
       );
 
       // 使用 SDK 的 order 方法提交订单
-      const result = await this.walletClient.order({
+      const result = await this.walletClient!.order({
         orders: [{
           a: assetIndex,           // 资产索引
           b: side === "buy",       // 是否买入
@@ -196,19 +253,28 @@ export class HyperliquidClient {
           status: "resting" in status ? "resting" : "filled"
         });
 
-        return { orderId, averagePrice };
+        return {
+          status: "filled" in status ? "FILLED" : "SUBMITTED",
+          orderId,
+          averagePrice
+        };
       } else {
-        throw new Error(`Unexpected response: ${JSON.stringify(result)}`);
+        throw new HyperliquidOrderError(
+          "SUBMIT_UNKNOWN",
+          `Unexpected response: ${JSON.stringify(result)}`
+        );
       }
     } catch (error) {
+      const classifiedError = this.classifyOrderError(error);
       logger.error({
         msg: "Hyperliquid order failed",
         coin,
         side,
         size,
-        error: error instanceof Error ? error.message : "Unknown error"
+        error: classifiedError.message,
+        kind: classifiedError.kind
       });
-      throw error;
+      throw classifiedError;
     }
   }
 
@@ -216,17 +282,11 @@ export class HyperliquidClient {
    * 获取当前持仓
    */
   async getPositions(): Promise<HyperliquidPosition[]> {
-    if (!this.walletClient || !this.walletAddress) {
-      // Mock 响应
-      return [
-        {
-          coin: "BTC",
-          szi: "0.1",
-          entryPx: "50000",
-          positionValue: "5000",
-          unrealizedPnl: "0"
-        }
-      ];
+    if (!this.publicClient || !this.walletAddress) {
+      throw new HyperliquidOrderError(
+        "CONFIG",
+        "Hyperliquid trading client is not initialized"
+      );
     }
 
     try {
@@ -262,7 +322,10 @@ export class HyperliquidClient {
    */
   async getMarkPrice(coin: string): Promise<string> {
     if (!this.publicClient) {
-      throw new Error("Hyperliquid public client is not initialized");
+      throw new HyperliquidOrderError(
+        "CONFIG",
+        "Hyperliquid public client is not initialized"
+      );
     }
 
     try {
@@ -288,14 +351,19 @@ export class HyperliquidClient {
         return assetCtxs[coinIndex].markPx;
       }
 
-      throw new Error(`Coin ${coin} not found in Hyperliquid universe`);
+      throw new HyperliquidOrderError(
+        "VALIDATION",
+        `Coin ${coin} not found in Hyperliquid universe`
+      );
     } catch (error) {
+      const classifiedError = this.classifyOrderError(error);
       logger.error({
         msg: "Failed to fetch mark price from Hyperliquid",
         coin,
-        error: error instanceof Error ? error.message : "Unknown error"
+        error: classifiedError.message,
+        kind: classifiedError.kind
       });
-      throw error;
+      throw classifiedError;
     }
   }
 

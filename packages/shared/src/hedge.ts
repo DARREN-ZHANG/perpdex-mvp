@@ -65,10 +65,12 @@ export const hedgeTaskSummarySchema = hedgeTaskPayloadSchema.pick({
 });
 
 export const hedgeStatusTransitions = {
-  PENDING: ["SUBMITTED", "FAILED"],
-  SUBMITTED: ["FILLED", "FAILED"],
+  PENDING: ["PROCESSING", "FAILED", "SUBMIT_UNKNOWN"],
+  PROCESSING: ["SUBMITTED", "FILLED", "FAILED", "SUBMIT_UNKNOWN"],
+  SUBMITTED: ["PROCESSING", "FILLED", "FAILED"],
   FILLED: [],
-  FAILED: []
+  FAILED: [],
+  SUBMIT_UNKNOWN: ["PROCESSING", "FAILED"]
 } as const;
 
 export function canTransitionHedgeStatus(
